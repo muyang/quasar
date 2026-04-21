@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>能量石 - Energy Stone</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(to bottom, #1A1A2E, #121212, #0A0A14);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+      user-select: none;
+    }
+    h1 { font-size: 32px; margin-bottom: 8px; font-weight: 500; }
+    .hint { color: rgba(107, 78, 255, 0.8); margin-bottom: 40px; font-size: 16px; }
+    .stone-container {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .glow {
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      transition: all 0.1s ease;
+      box-shadow: 0 0 30px rgba(107, 78, 255, 0.3);
+    }
+    .stone {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(107, 78, 255, 0.8), #2A2A4A, #1A1A3A);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    .energy-value { font-size: 36px; font-weight: bold; }
+    .energy-label { font-size: 14px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+    .progress-bar {
+      position: absolute;
+      bottom: 30px;
+      width: 200px;
+      height: 6px;
+      background: #2A2A2A;
+      border-radius: 3px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(to right, #6B4EFF, #B794FF);
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.05s linear;
+    }
+    .timer {
+      position: absolute;
+      top: 20px;
+      font-size: 18px;
+      font-weight: 500;
+      color: #6B4EFF;
+      opacity: 0;
+    }
+    .footer { margin-top: 40px; color: #B0B0B0; font-size: 16px; }
+    .blessing-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(to bottom, #2A2A4A, #1A1A3A);
+      border-radius: 24px 24px 0 0;
+      padding: 24px;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      box-shadow: 0 -10px 30px rgba(107, 78, 255, 0.3);
+    }
+    .blessing-panel.show { transform: translateY(0); }
+    .blessing-header { display: flex; justify-content: space-between; align-items: center; }
+    .blessing-title { font-size: 20px; font-weight: 600; }
+    .close-btn { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 24px; cursor: pointer; }
+    .energy-badge {
+      background: rgba(107, 78, 255, 0.2);
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin: 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .blessing-text { font-size: 16px; color: #B794FF; font-style: italic; text-align: center; }
+    .loading {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(107, 78, 255, 0.3);
+      border-top-color: #6B4EFF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      opacity: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stone.dead {
+      background: radial-gradient(circle at 30% 30%, rgba(100,100,100,0.3), #1A1A2A, #0A0A1A);
+      cursor: not-allowed;
+    }
+    .stone.dead .energy-value { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>能量石</h1>
+  <p class="hint" id="hint">长按充能</p>
+
+  <div class="stone-container" id="container">
+    <div class="glow" id="glow"></div>
+    <div class="stone" id="stone">
+      <span class="energy-value" id="energy">10</span>
+      <span class="energy-label">能量</span>
+    </div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <span class="timer" id="timer">0.0s</span>
+    <div class="loading" id="loading"></div>
+  </div>
+
+  <p class="footer">持续长按 3 秒为石头注入能量</p>
+
+  <div class="blessing-panel" id="blessingPanel">
+    <div class="blessing-header">
+      <span class="blessing-title">充能完成</span>
+      <button class="close-btn" onclick="closePanel()">×</button>
+    </div>
+    <div class="energy-badge">
+      <span>⚡</span>
+      <span id="energyBadge">能量: 15 / 100</span>
+    </div>
+    <p class="blessing-text" id="blessingText">「今天的你，比昨天又多了一份光芒。」</p>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8000/api/stone/1/charge';
+    const CHARGE_DURATION = 3; // 3秒
+    const HEARTBEAT_INTERVAL = 500; // 0.5秒心跳
+
+    let isPressing = false;
+    let pressProgress = 0;
+    let pressTimer = null;
+    let heartbeatTimer = null;
+    let heartbeatCount = 0;
+    let currentEnergy = 10;
+    let status = 'ALIVE';
+
+    const stone = document.getElementById('stone');
+    const glow = document.getElementById('glow');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const timer = document.getElementById('timer');
+    const hint = document.getElementById('hint');
+    const loading = document.getElementById('loading');
+    const blessingPanel = document.getElementById('blessingPanel');
+
+    function getGlowColor(progress) {
+      if (progress < 0.3) return 'rgba(74, 58, 138, 0.5)';
+      if (progress < 0.6) return 'rgba(107, 78, 255, 0.5)';
+      if (progress < 0.9) return 'rgba(157, 127, 255, 0.6)';
+      return 'rgba(183, 148, 255, 0.7)';
+    }
+
+    function startPress() {
+      if (isPressing || status === 'DEAD') return;
+      isPressing = true;
+      pressProgress = 0;
+      heartbeatCount = 0;
+
+      progressBar.style.opacity = '1';
+      timer.style.opacity = '1';
+
+      pressTimer = setInterval(() => {
+        pressProgress += 0.05 / CHARGE_DURATION;
+        updateVisuals();
+
+        if (pressProgress >= 1) {
+          completeCharge();
+        }
+      }, 50);
+
+      heartbeatTimer = setInterval(() => {
+        if (isPressing && pressProgress < 1) {
+          heartbeatCount++;
+          console.log(`[Haptic] 心跳震动 #${heartbeatCount}`);
+        }
+      }, HEARTBEAT_INTERVAL);
+    }
+
+    function endPress() {
+      if (!isPressing) return;
+
+      clearInterval(pressTimer);
+      clearInterval(heartbeatTimer);
+
+      if (pressProgress < 1) {
+        console.log(`[Charge] 未充满，能量消散 (进度: ${pressProgress.toFixed(2)})`);
+        resetVisuals();
+      }
+
+      isPressing = false;
+    }
+
+    function updateVisuals() {
+      const glowIntensity = pressProgress;
+      const scale = 1 + 0.15 * glowIntensity;
+
+      glow.style.width = `${200 + 80 * glowIntensity}px`;
+      glow.style.height = `${200 + 80 * glowIntensity}px`;
+      glow.style.boxShadow = `
+        0 0 ${30 + 50 * glowIntensity}px ${getGlowColor(glowIntensity)},
+        0 0 ${20 + 30 * glowIntensity}px ${getGlowColor(glowIntensity + 0.1)}
+      `;
+
+      stone.style.transform = `scale(${scale})`;
+      progressFill.style.width = `${pressProgress * 100}%`;
+      timer.textContent = `${(pressProgress * CHARGE_DURATION).toFixed(1)}s`;
+    }
+
+    function resetVisuals() {
+      glow.style.width = '200px';
+      glow.style.height = '200px';
+      glow.style.boxShadow = '0 0 30px rgba(107, 78, 255, 0.3)';
+      stone.style.transform = 'scale(1)';
+      progressBar.style.opacity = '0';
+      timer.style.opacity = '0';
+      progressFill.style.width = '0%';
+    }
+
+    async function completeCharge() {
+      clearInterval(pressTimer);
+      clearInterval(heartbeatTimer);
+      console.log('[Charge] 充能完成!');
+
+      loading.style.opacity = '1';
+      isPressing = false;
+
+      try {
+        const response = await fetch(API_URL, { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok) {
+          currentEnergy = data.energy_after;
+          status = data.status;
+          document.getElementById('energy').textContent = currentEnergy;
+          document.getElementById('energyBadge').textContent = `能量: ${currentEnergy} / 100`;
+          document.getElementById('blessingText').textContent = `「${data.blessing}」`;
+          blessingPanel.classList.add('show');
+
+          console.log(`[API] 充能成功: ${data.energy_before} -> ${data.energy_after}`);
+        } else {
+          alert('充能失败: ' + data.detail);
+        }
+      } catch (e) {
+        alert('网络请求失败: ' + e);
+      }
+
+      loading.style.opacity = '0';
+      resetVisuals();
+    }
+
+    function closePanel() {
+      blessingPanel.classList.remove('show');
+    }
+
+    // 触摸/鼠标事件
+    stone.addEventListener('mousedown', startPress);
+    stone.addEventListener('mouseup', endPress);
+    stone.addEventListener('mouseleave', endPress);
+    stone.addEventListener('touchstart', (e) => { e.preventDefault(); startPress(); });
+    stone.addEventListener('touchend', endPress);
+
+    // 初始检查石头状态
+    async function checkStatus() {
+      try {
+        // 通过API获取石头状态（需要先创建一个查询接口或直接设置）
+        document.getElementById('energy').textContent = currentEnergy;
+      } catch (e) {
+        console.log('状态检查失败');
+      }
+    }
+    checkStatus();
+  </script>
+</body>
+</html>

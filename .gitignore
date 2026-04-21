@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.db
+
+# Flutter
+frontend/build/
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.idea/
+frontend/*.iml
+
+# Android
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+
+# IDE
+.idea/
+*.iml
+
+# Logs
+*.log
