@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import EnergyStone, CheckInRecord, User, TransferRecord
+from app.models import EnergyStone, CheckInRecord, User, TransferRecord, Card, UserDrawRecord, PresetCard
 from app.schemas import (
     ChargeResponse, CheckInStatusResponse, CheckInRecordResponse, CheckInRecordsResponse,
-    UserResponse, UserRegisterRequest, StoneCreateRequest, StoneBindRequest,
+    UserResponse, UserRegisterRequest, LoginByStoneRequest, StoneCreateRequest, StoneBindRequest,
     TransferRequest, TransferResponse, StoneDetailResponse, StoneListResponse,
-    StoneStatus, STONE_TYPES
+    StoneStatus, STONE_TYPES, ENERGY_LEVELS, CARD_TYPE_NAMES,
+    CardResponse, CardListResponse, DrawCardRequest, DrawCardResponse, DrawStatusResponse,
+    ChargeCardRequest, ChargeCardResponse, GiftCardRequest, GiftCardResponse
 )
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -21,8 +23,10 @@ _CHARGE_VALUES = [v for v, _ in CHARGE_WEIGHTS]
 _CHARGE_WEIGHT_VALUES = [w for _, w in CHARGE_WEIGHTS]
 
 ENERGY_CAP = 100
-MAX_MULTIPLIER = 9  # 最大倍数
-MAX_TRANSFER_AMOUNT = 81  # 单次转赠最大值
+MAX_MULTIPLIER = 9
+MAX_TRANSFER_AMOUNT = 81
+MAX_ENERGY_DRAWS_PER_DAY = 3  # 每天最多能量消耗抽卡次数
+ENERGY_DRAW_COST = 3  # 每次能量消耗抽卡需要3点能量
 
 
 # 治愈祝福语列表
@@ -40,6 +44,95 @@ BLESSINGS = [
     "连续打卡，能量翻倍！坚持就是胜利。",
     "你的能量正在积蓄，明天会更强。",
 ]
+
+# 咒语库（每种类型预设咒语）
+MANTRAS = {
+    "HEALTH": [
+        "身体是灵魂的殿堂，珍爱它。",
+        "健康是最大的财富，守护它。",
+        "每一次呼吸都是生命的礼物。",
+        "强健的体魄承载无限的可能。",
+        "健康之路，始于足下。",
+        "身心合一，方得自在。",
+        "养生之道，顺应自然。",
+        "运动是生命的源泉。",
+        "静心养气，身心调和。",
+        "健康的身体是幸福的基石。",
+        "善待身体，它会回馈你。",
+        "活力充沛，精神焕发。",
+        "清晨阳光，滋养身心。",
+        "饮食有节，起居有常。",
+        "心如止水，身如松柏。",
+    ],
+    "LOVE": [
+        "爱是永恒的光芒，照亮前路。",
+        "心中有爱，万物皆美。",
+        "真诚的爱无需言语表达。",
+        "爱让世界变得温柔美好。",
+        "爱是最好的治愈良药。",
+        "被爱包围，心无所惧。",
+        "爱是生命最美的诗篇。",
+        "爱的力量超越一切障碍。",
+        "珍惜眼前人，善待心中爱。",
+        "爱是连接灵魂的桥梁。",
+        "懂得爱的人最幸福。",
+        "爱是无条件的接纳。",
+        "心中有爱，手中有光。",
+        "爱让平凡变得不凡。",
+        "爱是最好的修行。",
+    ],
+    "WEALTH": [
+        "财富如流水，善用则长流。",
+        "富足的心灵胜过富足的口袋。",
+        "勤劳是财富的种子。",
+        "知足常乐，财富自来。",
+        "财富是努力的回报。",
+        "善用财富，造福他人。",
+        "理财有道，致富有望。",
+        "节俭是财富的基石。",
+        "投资未来，收获希望。",
+        "财富自由，心灵自由。",
+        "开源节流，细水长流。",
+        "创造价值，获取财富。",
+        "智慧理财，稳健增值。",
+        "财富不是目的，是工具。",
+        "勤劳致富，诚信守富。",
+    ],
+    "CAREER": [
+        "努力是成功的基石，坚持是胜利的关键。",
+        "专注当下，成就未来。",
+        "每一步努力都值得记录。",
+        "成功源于日复一日的坚持。",
+        "事业的巅峰始于脚下的每一步。",
+        "敬业乐业，事业必成。",
+        "目标清晰，行动坚定。",
+        "突破自我，超越极限。",
+        "专注的力量无可阻挡。",
+        "今天付出，明天收获。",
+        "追求卓越，成就非凡。",
+        "热爱工作，享受过程。",
+        "计划周详，执行果断。",
+        "学习不止，进步不息。",
+        "专注一事，做到极致。",
+    ],
+    "FAMILY": [
+        "家和万事兴，和谐是最大的福气。",
+        "家人是最温暖的港湾。",
+        "陪伴是最长情的告白。",
+        "家庭和睦，万事顺遂。",
+        "亲情是最珍贵的财富。",
+        "善待家人，善待自己。",
+        "沟通是家庭的桥梁。",
+        "理解是家庭的基石。",
+        "家是心灵的归宿。",
+        "珍惜团聚时光。",
+        "家人支持是最大的力量。",
+        "和睦相处，彼此尊重。",
+        "家是爱的起点。",
+        "传承家风，延续美德。",
+        "家人健康是最大的心愿。",
+    ],
+}
 
 
 def _weighted_random_charge() -> int:
@@ -63,24 +156,22 @@ def _get_yesterday_date() -> str:
 
 # 石头类型前缀映射
 STONE_TYPE_PREFIX = {
-    "HEALTH": "H",    # 健康 - HRY
-    "LOVE": "L",      # 爱情 - LRY
-    "WEALTH": "W",    # 财富 - WRY
-    "CAREER": "C",    # 事业 - CRY
-    "FAMILY": "F",    # 家庭 - FRY
+    "HEALTH": "H",
+    "LOVE": "L",
+    "WEALTH": "W",
+    "CAREER": "C",
+    "FAMILY": "F",
 }
 
 
 def _generate_unique_code(db: Session, stone_type: str) -> str:
     """生成石头唯一编号，不同类型用不同字母开头。"""
     prefix = STONE_TYPE_PREFIX.get(stone_type, "C")
-    # 获取该类型石头的最后一个编号
     last_stone = db.query(EnergyStone).filter(
         EnergyStone.stone_type == stone_type
     ).order_by(EnergyStone.id.desc()).first()
 
     if last_stone:
-        # 从现有编号提取数字部分
         try:
             last_code = last_stone.unique_code
             last_num = int(last_code.split('-')[1])
@@ -114,16 +205,24 @@ def _update_consecutive_days(stone: EnergyStone) -> int:
     yesterday = _get_yesterday_date()
 
     if stone.last_check_in_date == yesterday:
-        # 连续打卡
         stone.consecutive_days += 1
     elif stone.last_check_in_date == today:
-        # 今天已经打卡过，保持原值
         pass
     else:
-        # 中断，重置为第1天
         stone.consecutive_days = 1
 
     return stone.consecutive_days
+
+
+def _generate_energy_value(level: int) -> int:
+    """根据能量等级生成随机能量值。"""
+    level_info = ENERGY_LEVELS[level]
+    return random.randint(level_info["min"], level_info["max"])
+
+
+def _get_card_color_code(card_type: str) -> str:
+    """获取卡牌颜色代码。"""
+    return STONE_TYPES.get(card_type, {}).get("color_code", "#4CAF50")
 
 
 # ==================== 用户接口 ====================
@@ -144,6 +243,47 @@ def register_user(request: UserRegisterRequest, db: Session = Depends(get_db)):
         nickname=user.nickname,
         created_at=user.created_at,
         stones=[]
+    )
+
+
+@router.post("/user/login-by-stone", response_model=UserResponse)
+def login_by_stone(request: LoginByStoneRequest, db: Session = Depends(get_db)):
+    """通过石头编号登录。扫描二维码/NFC后调用此接口。"""
+    stone = db.query(EnergyStone).filter(
+        EnergyStone.unique_code == request.unique_code.upper()
+    ).first()
+
+    if not stone:
+        raise HTTPException(status_code=404, detail="石头不存在")
+
+    if not stone.owner_id:
+        raise HTTPException(status_code=400, detail="该石头未绑定用户，请先注册新账户")
+
+    user = db.query(User).filter(User.id == stone.owner_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    stones = db.query(EnergyStone).filter(EnergyStone.owner_id == user.id).all()
+    stone_list = [
+        StoneStatus(
+            id=s.id,
+            unique_code=s.unique_code,
+            stone_type=s.stone_type,
+            owner_id=s.owner_id,
+            current_energy=s.current_energy,
+            death_count=s.death_count,
+            status=s.status,
+            consecutive_days=s.consecutive_days,
+            last_charge_time=s.last_charge_time
+        )
+        for s in stones
+    ]
+
+    return UserResponse(
+        id=user.id,
+        nickname=user.nickname,
+        created_at=user.created_at,
+        stones=stone_list
     )
 
 
@@ -182,13 +322,26 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @router.post("/stone/create", response_model=StoneDetailResponse)
 def create_stone(request: StoneCreateRequest, db: Session = Depends(get_db)):
-    """创建新石头（模拟购买）。"""
+    """创建新石头（模拟购买）。每种类型用户只能拥有一个。"""
     if request.stone_type not in STONE_TYPES:
         raise HTTPException(status_code=400, detail="无效的石头类型")
 
     user = db.query(User).filter(User.id == request.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 检查用户是否已有该类型石头
+    existing_stone = db.query(EnergyStone).filter(
+        EnergyStone.owner_id == request.user_id,
+        EnergyStone.stone_type == request.stone_type
+    ).first()
+
+    if existing_stone:
+        type_name = STONE_TYPES[request.stone_type]["name"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"您已拥有【{type_name}】类型的水晶，每种类型只能购买一个"
+        )
 
     unique_code = _generate_unique_code(db, request.stone_type)
     stone = EnergyStone(
@@ -235,6 +388,19 @@ def bind_stone(request: StoneBindRequest, db: Session = Depends(get_db)):
     if stone.owner_id:
         raise HTTPException(status_code=400, detail="该石头已被其他人绑定")
 
+    # 检查用户是否已有该类型石头
+    existing_stone = db.query(EnergyStone).filter(
+        EnergyStone.owner_id == request.user_id,
+        EnergyStone.stone_type == stone.stone_type
+    ).first()
+
+    if existing_stone:
+        type_name = STONE_TYPES[stone.stone_type]["name"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"您已拥有【{type_name}】类型的水晶，无法绑定同类型石头"
+        )
+
     stone.owner_id = request.user_id
     db.commit()
     db.refresh(stone)
@@ -274,7 +440,6 @@ def get_stone_detail(stone_id: int, db: Session = Depends(get_db)):
         user = db.query(User).filter(User.id == stone.owner_id).first()
         owner_nickname = user.nickname if user else None
 
-    # 计算下次打卡的倍数
     multiplier = _calculate_multiplier(stone.consecutive_days + 1)
 
     return StoneDetailResponse(
@@ -318,7 +483,6 @@ def get_check_in_status(stone_id: int, db: Session = Depends(get_db)):
             next_multiplier=0
         )
 
-    # 计算下次打卡的倍数
     next_days = stone.consecutive_days + 1 if stone.last_check_in_date == _get_yesterday_date() else 1
     multiplier = _calculate_multiplier(next_days)
 
@@ -331,6 +495,7 @@ def get_check_in_status(stone_id: int, db: Session = Depends(get_db)):
 
 @router.post("/stone/{stone_id}/charge", response_model=ChargeResponse)
 def charge_stone(stone_id: int, db: Session = Depends(get_db)):
+    """石头充能（打卡）。充能成功后获得免费抽卡机会。"""
     stone = db.query(EnergyStone).filter(EnergyStone.id == stone_id).first()
     if not stone:
         raise HTTPException(status_code=404, detail="石头不存在")
@@ -341,14 +506,12 @@ def charge_stone(stone_id: int, db: Session = Depends(get_db)):
     if _has_checked_in_today(stone, db):
         raise HTTPException(status_code=400, detail="今日已充能，请明天再来吧")
 
-    # 更新连续打卡天数
     consecutive_days = _update_consecutive_days(stone)
     multiplier = _calculate_multiplier(consecutive_days)
 
-    # 计算能量增量
     base_gain = _weighted_random_charge()
     total_gain = base_gain * multiplier
-    total_gain = min(total_gain, ENERGY_CAP - stone.current_energy)  # 不能超过上限
+    total_gain = min(total_gain, ENERGY_CAP - stone.current_energy)
 
     energy_before = stone.current_energy
     energy_after = min(energy_before + total_gain, ENERGY_CAP)
@@ -359,7 +522,6 @@ def charge_stone(stone_id: int, db: Session = Depends(get_db)):
     blessing = _random_blessing()
     today = _get_today_date()
 
-    # 创建打卡记录
     check_in_record = CheckInRecord(
         stone_id=stone.id,
         check_in_date=today,
@@ -377,6 +539,9 @@ def charge_stone(stone_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(stone)
 
+    # 判断是否获得免费抽卡机会（今日首次打卡）
+    free_draw_available = True
+
     return ChargeResponse(
         stone_id=stone.id,
         energy_before=energy_before,
@@ -387,6 +552,7 @@ def charge_stone(stone_id: int, db: Session = Depends(get_db)):
         consecutive_days=consecutive_days,
         blessing=blessing,
         status=stone.status,
+        free_draw_available=free_draw_available
     )
 
 
@@ -429,14 +595,11 @@ def transfer_energy(request: TransferRequest, db: Session = Depends(get_db)):
     if not from_stone:
         raise HTTPException(status_code=404, detail="发送方石头不存在")
 
-    # 解析接收者：尝试作为用户ID或石头编号
     to_stone = None
     to_owner = None
 
-    # 尝试解析为用户ID（纯数字）
     user_id = int(request.to_receiver) if request.to_receiver.isdigit() else None
     if user_id:
-        # 查找该用户同类型的第一颗可用石头
         to_owner = db.query(User).filter(User.id == user_id).first()
         if not to_owner:
             raise HTTPException(status_code=404, detail="接收者用户不存在")
@@ -454,7 +617,6 @@ def transfer_energy(request: TransferRequest, db: Session = Depends(get_db)):
                 detail=f"接收者没有【{type_name}】类型的可用水晶"
             )
     else:
-        # 作为石头编号查询
         to_stone = db.query(EnergyStone).filter(
             EnergyStone.unique_code == request.to_receiver.upper()
         ).first()
@@ -464,7 +626,6 @@ def transfer_energy(request: TransferRequest, db: Session = Depends(get_db)):
         if to_stone.owner_id:
             to_owner = db.query(User).filter(User.id == to_stone.owner_id).first()
 
-    # 验证条件
     if from_stone.status == "DEAD":
         raise HTTPException(status_code=400, detail="发送方水晶已枯竭")
 
@@ -491,14 +652,9 @@ def transfer_energy(request: TransferRequest, db: Session = Depends(get_db)):
     if request.energy_amount > from_stone.current_energy:
         raise HTTPException(status_code=400, detail="转赠能量不能超过当前能量值")
 
-    # 执行转赠
-    from_energy_before = from_stone.current_energy
-    to_energy_before = to_stone.current_energy
-
     from_stone.current_energy -= request.energy_amount
     to_stone.current_energy = min(to_stone.current_energy + request.energy_amount, ENERGY_CAP)
 
-    # 创建转赠记录
     transfer_record = TransferRecord(
         from_stone_id=from_stone.id,
         to_stone_id=to_stone.id,
@@ -510,7 +666,6 @@ def transfer_energy(request: TransferRequest, db: Session = Depends(get_db)):
     db.refresh(from_stone)
     db.refresh(to_stone)
 
-    # 构建接收者显示名称
     receiver_name = to_owner.nickname if to_owner else to_stone.unique_code
 
     return TransferResponse(
@@ -590,3 +745,355 @@ def get_user_stones(user_id: int, db: Session = Depends(get_db)):
         ))
 
     return StoneListResponse(stones=stone_list)
+
+
+# ==================== 卡牌接口 ====================
+
+@router.get("/user/{user_id}/draw-status", response_model=DrawStatusResponse)
+def get_draw_status(user_id: int, db: Session = Depends(get_db)):
+    """获取用户今日抽卡状态。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    today = _get_today_date()
+
+    # 今日打卡获得的免费抽卡次数（每个石头打卡一次获得一次免费抽卡）
+    user_stones = db.query(EnergyStone).filter(
+        EnergyStone.owner_id == user_id,
+        EnergyStone.status == "ALIVE"
+    ).all()
+
+    free_draws_available = 0
+    for stone in user_stones:
+        if _has_checked_in_today(stone, db):
+            free_draws_available += 1
+
+    # 查看今日已使用的免费抽卡次数
+    free_draws_used = db.query(UserDrawRecord).filter(
+        UserDrawRecord.user_id == user_id,
+        UserDrawRecord.draw_date == today,
+        UserDrawRecord.draw_type == "FREE"
+    ).count()
+
+    free_draws_available -= free_draws_used
+    free_draws_available = max(0, free_draws_available)
+
+    # 今日已使用的能量抽卡次数
+    energy_draws_used = db.query(UserDrawRecord).filter(
+        UserDrawRecord.user_id == user_id,
+        UserDrawRecord.draw_date == today,
+        UserDrawRecord.draw_type == "ENERGY"
+    ).count()
+
+    energy_draws_remaining = MAX_ENERGY_DRAWS_PER_DAY - energy_draws_used
+
+    return DrawStatusResponse(
+        free_draws_available=free_draws_available,
+        energy_draws_used=energy_draws_used,
+        energy_draws_remaining=energy_draws_remaining
+    )
+
+
+@router.post("/card/draw", response_model=DrawCardResponse)
+def draw_card(request: DrawCardRequest, db: Session = Depends(get_db)):
+    """抽卡。draw_type: FREE（打卡免费）或 ENERGY（消耗能量）。"""
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    today = _get_today_date()
+
+    # 检查抽卡条件
+    if request.draw_type == "FREE":
+        # 检查是否有免费抽卡次数
+        free_draws_used = db.query(UserDrawRecord).filter(
+            UserDrawRecord.user_id == request.user_id,
+            UserDrawRecord.draw_date == today,
+            UserDrawRecord.draw_type == "FREE"
+        ).count()
+
+        user_stones = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == request.user_id,
+            EnergyStone.status == "ALIVE"
+        ).all()
+
+        free_draws_total = 0
+        for stone in user_stones:
+            if _has_checked_in_today(stone, db):
+                free_draws_total += 1
+
+        if free_draws_used >= free_draws_total:
+            raise HTTPException(status_code=400, detail="今日免费抽卡次数已用完")
+
+    elif request.draw_type == "ENERGY":
+        # 检查能量消耗抽卡次数
+        energy_draws_used = db.query(UserDrawRecord).filter(
+            UserDrawRecord.user_id == request.user_id,
+            UserDrawRecord.draw_date == today,
+            UserDrawRecord.draw_type == "ENERGY"
+        ).count()
+
+        if energy_draws_used >= MAX_ENERGY_DRAWS_PER_DAY:
+            raise HTTPException(status_code=400, detail=f"今日能量抽卡次数已达上限（{MAX_ENERGY_DRAWS_PER_DAY}次）")
+
+        # 检查用户是否有足够能量（从任意石头扣除）
+        user_stones = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == request.user_id,
+            EnergyStone.status == "ALIVE"
+        ).all()
+
+        total_energy = sum(s.current_energy for s in user_stones)
+        if total_energy < ENERGY_DRAW_COST:
+            raise HTTPException(status_code=400, detail=f"能量不足，抽卡需要{ENERGY_DRAW_COST}点能量")
+
+        # 从能量最高的石头扣除能量
+        stone = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == request.user_id,
+            EnergyStone.status == "ALIVE",
+            EnergyStone.current_energy >= ENERGY_DRAW_COST
+        ).order_by(EnergyStone.current_energy.desc()).first()
+
+        if stone:
+            stone.current_energy -= ENERGY_DRAW_COST
+    else:
+        raise HTTPException(status_code=400, detail="无效的抽卡类型")
+
+    # 从预设卡牌池随机抽取一张
+    preset_cards = db.query(PresetCard).all()
+    if not preset_cards:
+        raise HTTPException(status_code=500, detail="卡牌池未初始化")
+
+    # 按能量等级加权：低级别概率高，高级别概率低
+    level_weights = {1: 40, 2: 30, 3: 20, 4: 8, 5: 2}
+    weighted_cards = []
+    for card in preset_cards:
+        weight = level_weights.get(card.energy_level, 10)
+        weighted_cards.extend([card] * weight)
+
+    selected_preset = random.choice(weighted_cards)
+
+    # 创建用户卡牌
+    energy_value = _generate_energy_value(selected_preset.energy_level)
+    new_card = Card(
+        preset_card_id=selected_preset.id,
+        card_type=selected_preset.card_type,
+        mantra=selected_preset.mantra,
+        energy_level=selected_preset.energy_level,
+        energy_value=energy_value,
+        energy_consumed=0,
+        owner_id=request.user_id,
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
+    db.add(new_card)
+    db.flush()  # 先flush获取ID
+
+    # 记录抽卡
+    draw_record = UserDrawRecord(
+        user_id=request.user_id,
+        draw_date=today,
+        draw_type=request.draw_type,
+        card_id=new_card.id,
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
+    db.add(draw_record)
+
+    db.commit()
+    db.refresh(new_card)
+
+    type_name = CARD_TYPE_NAMES.get(new_card.card_type, "未知")
+    level_name = ENERGY_LEVELS.get(new_card.energy_level, {}).get("name", "未知")
+
+    return DrawCardResponse(
+        success=True,
+        card=CardResponse(
+            id=new_card.id,
+            card_type=new_card.card_type,
+            card_type_name=type_name,
+            mantra=new_card.mantra,
+            energy_level=new_card.energy_level,
+            energy_level_name=level_name,
+            energy_value=new_card.energy_value,
+            energy_consumed=new_card.energy_consumed,
+            remaining_energy=new_card.energy_value - new_card.energy_consumed,
+            color_code=_get_card_color_code(new_card.card_type),
+            can_charge=True,
+            created_at=new_card.created_at
+        ),
+        message=f"抽到一张【{type_name}】{level_name}级卡牌！",
+        draw_type=request.draw_type,
+        energy_cost=ENERGY_DRAW_COST if request.draw_type == "ENERGY" else 0
+    )
+
+
+@router.get("/user/{user_id}/cards", response_model=CardListResponse)
+def get_user_cards(user_id: int, db: Session = Depends(get_db)):
+    """获取用户的所有卡牌。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    cards = db.query(Card).filter(Card.owner_id == user_id).order_by(Card.created_at.desc()).all()
+
+    # 获取用户拥有的石头类型，用于判断卡牌是否可充值
+    user_stone_types = set()
+    user_stones = db.query(EnergyStone).filter(
+        EnergyStone.owner_id == user_id,
+        EnergyStone.status == "ALIVE"
+    ).all()
+    for stone in user_stones:
+        user_stone_types.add(stone.stone_type)
+
+    card_list = []
+    for c in cards:
+        remaining = c.energy_value - c.energy_consumed
+        type_name = CARD_TYPE_NAMES.get(c.card_type, "未知")
+        level_name = ENERGY_LEVELS.get(c.energy_level, {}).get("name", "未知")
+
+        # 检查是否可充值：有剩余能量 + 用户有匹配类型石头
+        can_charge = remaining > 0 and c.card_type in user_stone_types
+
+        card_list.append(CardResponse(
+            id=c.id,
+            card_type=c.card_type,
+            card_type_name=type_name,
+            mantra=c.mantra,
+            energy_level=c.energy_level,
+            energy_level_name=level_name,
+            energy_value=c.energy_value,
+            energy_consumed=c.energy_consumed,
+            remaining_energy=remaining,
+            color_code=_get_card_color_code(c.card_type),
+            can_charge=can_charge,
+            created_at=c.created_at
+        ))
+
+    return CardListResponse(cards=card_list, total=len(card_list))
+
+
+@router.post("/card/{card_id}/charge", response_model=ChargeCardResponse)
+def charge_card_to_stone(card_id: int, request: ChargeCardRequest, db: Session = Depends(get_db)):
+    """将卡牌能量充值到石头。"""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡牌不存在")
+
+    stone = db.query(EnergyStone).filter(EnergyStone.id == request.stone_id).first()
+    if not stone:
+        raise HTTPException(status_code=404, detail="石头不存在")
+
+    # 检查类型匹配
+    if card.card_type != stone.stone_type:
+        card_type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+        stone_type_name = STONE_TYPES.get(stone.stone_type, {}).get("name", "未知")
+        raise HTTPException(
+            status_code=400,
+            detail=f"类型不匹配：卡牌是【{card_type_name}】，石头是【{stone_type_name}】"
+        )
+
+    # 检查卡牌剩余能量
+    remaining_energy = card.energy_value - card.energy_consumed
+    if remaining_energy <= 0:
+        raise HTTPException(status_code=400, detail="卡牌能量已耗尽")
+
+    # 检查石头状态
+    if stone.status == "DEAD":
+        raise HTTPException(status_code=400, detail="石头已枯竭")
+
+    # 检查石头归属
+    if card.owner_id != stone.owner_id:
+        raise HTTPException(status_code=400, detail="只能向自己的石头充值能量")
+
+    # 执行充值
+    charge_amount = min(remaining_energy, ENERGY_CAP - stone.current_energy)
+    stone.current_energy += charge_amount
+    card.energy_consumed += charge_amount
+
+    db.commit()
+    db.refresh(stone)
+    db.refresh(card)
+
+    card_remaining = card.energy_value - card.energy_consumed
+
+    return ChargeCardResponse(
+        success=True,
+        card_id=card.id,
+        stone_id=stone.id,
+        energy_charged=charge_amount,
+        stone_energy_after=stone.current_energy,
+        card_remaining_energy=card_remaining,
+        message=f"成功充值{charge_amount}点能量到石头，卡牌剩余{card_remaining}点能量"
+    )
+
+
+@router.post("/card/{card_id}/gift", response_model=GiftCardResponse)
+def gift_card(card_id: int, request: GiftCardRequest, db: Session = Depends(get_db)):
+    """赠送卡牌给其他用户。"""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡牌不存在")
+
+    to_user = db.query(User).filter(User.id == request.to_user_id).first()
+    if not to_user:
+        raise HTTPException(status_code=404, detail="接收用户不存在")
+
+    if card.owner_id == request.to_user_id:
+        raise HTTPException(status_code=400, detail="不能赠送给自己")
+
+    # 检查卡牌是否有剩余能量
+    remaining = card.energy_value - card.energy_consumed
+    if remaining <= 0:
+        raise HTTPException(status_code=400, detail="卡牌能量已耗尽，无法赠送")
+
+    # 转移卡牌所有权
+    card.owner_id = request.to_user_id
+    db.commit()
+    db.refresh(card)
+
+    return GiftCardResponse(
+        success=True,
+        card_id=card.id,
+        from_user_id=card.owner_id,
+        to_user_id=request.to_user_id,
+        to_user_nickname=to_user.nickname,
+        message=f"成功将卡牌赠送给 {to_user.nickname}"
+    )
+
+
+@router.get("/card/{card_id}")
+def get_card_detail(card_id: int, db: Session = Depends(get_db)):
+    """获取卡牌详情。"""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡牌不存在")
+
+    remaining = card.energy_value - card.energy_consumed
+    type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+    level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+
+    # 检查用户是否拥有匹配类型石头
+    user_stone_types = set()
+    if card.owner_id:
+        user_stones = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == card.owner_id,
+            EnergyStone.status == "ALIVE"
+        ).all()
+        for stone in user_stones:
+            user_stone_types.add(stone.stone_type)
+
+    can_charge = remaining > 0 and card.card_type in user_stone_types
+
+    return CardResponse(
+        id=card.id,
+        card_type=card.card_type,
+        card_type_name=type_name,
+        mantra=card.mantra,
+        energy_level=card.energy_level,
+        energy_level_name=level_name,
+        energy_value=card.energy_value,
+        energy_consumed=card.energy_consumed,
+        remaining_energy=remaining,
+        color_code=_get_card_color_code(card.card_type),
+        can_charge=can_charge,
+        created_at=card.created_at
+    )

@@ -11,6 +11,8 @@ import 'my_stones_screen.dart';
 import 'transfer_screen.dart';
 import 'settings_screen.dart';
 import 'stone_detail_screen.dart';
+import 'cards_screen.dart';
+import 'draw_card_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final int userId;
@@ -35,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int? _lastMultiplier;
   int? _lastConsecutiveDays;
   bool _showBlessingPanel = false;
+  bool _showDrawPrompt = false;  // 打卡后抽卡提示
   int _currentTabIndex = 0;
 
   @override
@@ -119,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isLoading = false;
         _showBlessingPanel = true;
+        _showDrawPrompt = response.freeDrawAvailable;  // 显示抽卡提示
         _canCheckIn = false;
         _statusMessage = '今日已充能，明天再来吧';
         _lastBlessing = response.blessing;
@@ -193,15 +197,78 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildMainPage(),
               MyStonesScreen(userId: widget.userId, onStoneTap: _navigateToStoneDetail, onRefresh: _refreshData),
+              CardsScreen(userId: widget.userId, stones: _stones, onRefresh: _refreshData),
               TransferScreen(userId: widget.userId, stones: _stones, onTransferComplete: _refreshData),
               SettingsScreen(userId: widget.userId, onRefresh: _refreshData),
             ],
           ),
           if (_showBlessingPanel && _lastBlessing != null)
             _buildBlessingPanel(),
+          if (_showDrawPrompt)
+            _buildDrawPromptPanel(),
         ],
       ),
       bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildDrawPromptPanel() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.7),
+        child: Center(
+          child: Container(
+            width: 300,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A4A),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.style, size: 64, color: Color(0xFFB794FF)),
+                const SizedBox(height: 16),
+                const Text('打卡成功！', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 8),
+                const Text('获得一次免费抽卡机会', style: TextStyle(fontSize: 16, color: Color(0xFFB794FF))),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showDrawPrompt = false;
+                      _showBlessingPanel = false;
+                    });
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DrawCardScreen(userId: widget.userId, stones: _stones),
+                      ),
+                    ).then((_) => _refreshData());
+                  },
+                  icon: const Icon(Icons.shuffle),
+                  label: const Text('去抽卡'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6B4EFF),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showDrawPrompt = false;
+                    });
+                  },
+                  child: Text('稍后再抽', style: TextStyle(color: Colors.white.withOpacity(0.6))),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -572,7 +639,8 @@ class _HomeScreenState extends State<HomeScreen> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: '主页'),
-          BottomNavigationBarItem(icon: Icon(Icons.diamond), label: '我的'),
+          BottomNavigationBarItem(icon: Icon(Icons.diamond), label: '石头'),
+          BottomNavigationBarItem(icon: Icon(Icons.style), label: '卡牌'),
           BottomNavigationBarItem(icon: Icon(Icons.send), label: '转赠'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
         ],

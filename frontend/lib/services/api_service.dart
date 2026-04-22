@@ -6,7 +6,7 @@ class ApiService {
   // 根据环境切换地址
   // 真机测试使用实际 IP
   // 模拟器使用 10.0.2.2
-  static String baseUrl = 'http://192.168.0.108:8000/api';
+  static String baseUrl = 'http://192.168.43.6:8000/api';
 
   void setBaseUrl(String url) {
     baseUrl = url;
@@ -275,6 +275,156 @@ class ApiService {
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['detail'] ?? '转赠失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== 登录接口 ====================
+
+  Future<User> loginByStoneCode(String uniqueCode) async {
+    final url = Uri.parse('$baseUrl/user/login-by-stone');
+    print('[API] 通过石头编号登录: $url, code: $uniqueCode');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'unique_code': uniqueCode}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 登录成功: ${data}');
+        return User.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '登录失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== 卡牌接口 ====================
+
+  Future<DrawStatus> getDrawStatus(int userId) async {
+    final url = Uri.parse('$baseUrl/user/$userId/draw-status');
+    print('[API] 获取抽卡状态: $url');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 抽卡状态: ${data}');
+        return DrawStatus.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<DrawCardResponse> drawCard(int userId, String drawType) async {
+    final url = Uri.parse('$baseUrl/card/draw');
+    print('[API] 抽卡: $url, userId: $userId, type: $drawType');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'draw_type': drawType,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 抽卡成功: ${data}');
+        return DrawCardResponse.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '抽卡失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<List<Card>> getUserCards(int userId) async {
+    final url = Uri.parse('$baseUrl/user/$userId/cards');
+    print('[API] 获取用户卡牌: $url');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final cards = data['cards'] as List;
+        print('[API] 获取到 ${cards.length} 张卡牌');
+        return cards.map((c) => Card.fromJson(c)).toList();
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<ChargeCardResponse> chargeCardToStone(int cardId, int stoneId) async {
+    final url = Uri.parse('$baseUrl/card/$cardId/charge');
+    print('[API] 卡牌充值: $url, cardId: $cardId, stoneId: $stoneId');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'stone_id': stoneId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 充值成功: ${data}');
+        return ChargeCardResponse.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '充值失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<bool> giftCard(int cardId, int toUserId) async {
+    final url = Uri.parse('$baseUrl/card/$cardId/gift');
+    print('[API] 赠送卡牌: $url, cardId: $cardId, toUserId: $toUserId');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'to_user_id': toUserId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 赠送成功: ${data}');
+        return true;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '赠送失败');
       }
     } catch (e) {
       print('[API] 请求异常: $e');

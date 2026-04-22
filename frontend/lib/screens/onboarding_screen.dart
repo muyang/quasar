@@ -16,6 +16,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _nicknameController = TextEditingController();
+  final TextEditingController _stoneCodeController = TextEditingController();
   int _currentStep = 0;
   bool _isLoading = false;
   User? _user;
@@ -30,7 +31,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('user_id');
     if (userId != null) {
-      // 已有用户，直接跳转主页
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => HomeScreen(userId: userId)),
@@ -58,7 +58,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _currentStep = 1;
       });
 
-      // 保存用户ID
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('user_id', user.id);
 
@@ -69,6 +68,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('注册失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _loginByStone() async {
+    final code = _stoneCodeController.text.trim().toUpperCase();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入水晶编号')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = await _apiService.loginByStoneCode(code);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('user_id', user.id);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen(userId: user.id)),
+      );
+
+      print('[Onboarding] 登录成功，用户ID: ${user.id}');
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('登录失败: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -186,68 +226,125 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildNicknameStep() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(
-          Icons.person_outline,
-          size: 80,
-          color: Color(0xFFB794FF),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          '欢迎使用能量石',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.person_outline,
+            size: 80,
+            color: Color(0xFFB794FF),
           ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '请设置你的昵称',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.white.withOpacity(0.7),
-          ),
-        ),
-        const SizedBox(height: 32),
-        TextField(
-          controller: _nicknameController,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 20),
-          decoration: InputDecoration(
-            hintText: '输入昵称',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-            filled: true,
-            fillColor: const Color(0xFF2A2A4A),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
+          const SizedBox(height: 24),
+          const Text(
+            '欢迎使用能量石',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
           ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _registerUser,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6B4EFF),
-              shape: RoundedRectangleBorder(
+          const SizedBox(height: 16),
+          Text(
+            '新用户：设置昵称注册',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 32),
+          TextField(
+            controller: _nicknameController,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 20),
+            decoration: InputDecoration(
+              hintText: '输入昵称',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              filled: true,
+              fillColor: const Color(0xFF2A2A4A),
+              border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
             ),
-            child: _isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    '下一步',
-                    style: TextStyle(fontSize: 18, color: Colors.white),
-                  ),
           ),
-        ),
-      ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _registerUser,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6B4EFF),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      '注册新账户',
+                      style: TextStyle(fontSize: 18, color: Colors.white),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          // 分隔线
+          Row(
+            children: [
+              Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text('老用户', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+              ),
+              Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '通过水晶编号登录',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _stoneCodeController,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+            decoration: InputDecoration(
+              hintText: '输入水晶编号 (如 CRY-000001)',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              filled: true,
+              fillColor: const Color(0xFF2A2A4A),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _loginByStone,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2A2A4A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Color(0xFFB794FF)),
+                ),
+              ),
+              child: const Text(
+                '登录',
+                style: TextStyle(fontSize: 18, color: Color(0xFFB794FF)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -360,6 +457,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void dispose() {
     _nicknameController.dispose();
+    _stoneCodeController.dispose();
     super.dispose();
   }
 }

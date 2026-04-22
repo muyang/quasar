@@ -182,6 +182,7 @@ class ChargeResponse {
   final int consecutiveDays;
   final String blessing;
   final String status;
+  final bool freeDrawAvailable;
 
   ChargeResponse({
     required this.stoneId,
@@ -193,6 +194,7 @@ class ChargeResponse {
     required this.consecutiveDays,
     required this.blessing,
     required this.status,
+    this.freeDrawAvailable = false,
   });
 
   factory ChargeResponse.fromJson(Map<String, dynamic> json) {
@@ -206,6 +208,7 @@ class ChargeResponse {
       consecutiveDays: json['consecutive_days'] as int,
       blessing: json['blessing'] as String,
       status: json['status'] as String,
+      freeDrawAvailable: json['free_draw_available'] as bool? ?? false,
     );
   }
 }
@@ -307,6 +310,149 @@ class TransferResponse {
       energyAmount: json['energy_amount'] as int,
       fromStoneEnergy: json['from_stone_energy'] as int,
       toStoneEnergy: json['to_stone_energy'] as int,
+      message: json['message'] as String,
+    );
+  }
+}
+
+// ==================== 卡牌相关模型 ====================
+
+const ENERGY_LEVEL_NAMES = {
+  1: '微光',
+  2: '闪烁',
+  3: '明亮',
+  4: '璀璨',
+  5: '耀目',
+};
+
+const CARD_TYPE_NAMES = {
+  'HEALTH': '健康',
+  'LOVE': '爱情',
+  'WEALTH': '财富',
+  'CAREER': '事业',
+  'FAMILY': '家庭',
+};
+
+class Card {
+  final int id;
+  final String cardType;
+  final String cardTypeName;
+  final String mantra;
+  final int energyLevel;
+  final String energyLevelName;
+  final int energyValue;
+  final int energyConsumed;
+  final int remainingEnergy;
+  final String colorCode;
+  final bool canCharge;
+  final String createdAt;
+
+  Card({
+    required this.id,
+    required this.cardType,
+    required this.cardTypeName,
+    required this.mantra,
+    required this.energyLevel,
+    required this.energyLevelName,
+    required this.energyValue,
+    required this.energyConsumed,
+    required this.remainingEnergy,
+    required this.colorCode,
+    required this.canCharge,
+    required this.createdAt,
+  });
+
+  factory Card.fromJson(Map<String, dynamic> json) {
+    return Card(
+      id: json['id'] as int,
+      cardType: json['card_type'] as String,
+      cardTypeName: json['card_type_name'] as String,
+      mantra: json['mantra'] as String,
+      energyLevel: json['energy_level'] as int,
+      energyLevelName: json['energy_level_name'] as String,
+      energyValue: json['energy_value'] as int,
+      energyConsumed: json['energy_consumed'] as int? ?? 0,
+      remainingEnergy: json['remaining_energy'] as int,
+      colorCode: json['color_code'] as String,
+      canCharge: json['can_charge'] as bool? ?? false,
+      createdAt: json['created_at'] as String,
+    );
+  }
+}
+
+class DrawStatus {
+  final int freeDrawsAvailable;
+  final int energyDrawsUsed;
+  final int energyDrawsRemaining;
+
+  DrawStatus({
+    required this.freeDrawsAvailable,
+    required this.energyDrawsUsed,
+    required this.energyDrawsRemaining,
+  });
+
+  factory DrawStatus.fromJson(Map<String, dynamic> json) {
+    return DrawStatus(
+      freeDrawsAvailable: json['free_draws_available'] as int? ?? 0,
+      energyDrawsUsed: json['energy_draws_used'] as int? ?? 0,
+      energyDrawsRemaining: json['energy_draws_remaining'] as int? ?? 3,
+    );
+  }
+}
+
+class DrawCardResponse {
+  final bool success;
+  final Card? card;
+  final String message;
+  final String drawType;
+  final int energyCost;
+
+  DrawCardResponse({
+    required this.success,
+    this.card,
+    required this.message,
+    required this.drawType,
+    this.energyCost = 0,
+  });
+
+  factory DrawCardResponse.fromJson(Map<String, dynamic> json) {
+    return DrawCardResponse(
+      success: json['success'] as bool,
+      card: json['card'] != null ? Card.fromJson(json['card'] as Map<String, dynamic>) : null,
+      message: json['message'] as String,
+      drawType: json['draw_type'] as String,
+      energyCost: json['energy_cost'] as int? ?? 0,
+    );
+  }
+}
+
+class ChargeCardResponse {
+  final bool success;
+  final int cardId;
+  final int stoneId;
+  final int energyCharged;
+  final int stoneEnergyAfter;
+  final int cardRemainingEnergy;
+  final String message;
+
+  ChargeCardResponse({
+    required this.success,
+    required this.cardId,
+    required this.stoneId,
+    required this.energyCharged,
+    required this.stoneEnergyAfter,
+    required this.cardRemainingEnergy,
+    required this.message,
+  });
+
+  factory ChargeCardResponse.fromJson(Map<String, dynamic> json) {
+    return ChargeCardResponse(
+      success: json['success'] as bool,
+      cardId: json['card_id'] as int,
+      stoneId: json['stone_id'] as int,
+      energyCharged: json['energy_charged'] as int,
+      stoneEnergyAfter: json['stone_energy_after'] as int,
+      cardRemainingEnergy: json['card_remaining_energy'] as int,
       message: json['message'] as String,
     );
   }
