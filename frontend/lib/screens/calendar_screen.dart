@@ -129,11 +129,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '已充能',
+                    '${record.multiplier}x倍',
                     style: const TextStyle(
                       color: Color(0xFFB794FF),
                       fontSize: 14,
                     ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '连续${record.consecutiveDays}天',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.7),
                   ),
                 ),
               ],
@@ -145,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 const Icon(Icons.bolt_rounded, color: Color(0xFFB794FF), size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  '${record.energyBefore} → ${record.energyAfter}',
+                  '${record.energyBefore} → ${record.energyAfter} (+${record.energyGained})',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w500,
@@ -153,6 +166,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '基础: ${record.baseGain} × ${record.multiplier}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.6),
+              ),
             ),
             const SizedBox(height: 16),
             Text(

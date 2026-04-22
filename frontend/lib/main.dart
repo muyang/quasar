@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
 
 void main() {
   runApp(const EnergyStoneApp());
 }
 
-class EnergyStoneApp extends StatelessWidget {
+class EnergyStoneApp extends StatefulWidget {
   const EnergyStoneApp({super.key});
+
+  @override
+  State<EnergyStoneApp> createState() => _EnergyStoneAppState();
+}
+
+class _EnergyStoneAppState extends State<EnergyStoneApp> {
+  bool _isLoading = true;
+  bool _hasUser = false;
+  int? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserSession();
+  }
+
+  Future<void> _checkUserSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    setState(() {
+      _hasUser = userId != null;
+      _userId = userId;
+      _isLoading = false;
+    });
+    print('[Main] 用户状态检查: userId=$userId, hasUser=$_hasUser');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +67,15 @@ class EnergyStoneApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: _isLoading
+          ? const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: Color(0xFF6B4EFF)),
+              ),
+            )
+          : _hasUser && _userId != null
+              ? HomeScreen(userId: _userId!)
+              : const OnboardingScreen(),
     );
   }
 }

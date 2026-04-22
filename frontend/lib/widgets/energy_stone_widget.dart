@@ -1,17 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 
 class EnergyStoneWidget extends StatefulWidget {
   final int stoneId;
   final int currentEnergy;
+  final Color stoneColor;
   final Function(int newEnergy, String blessing)? onChargeComplete;
 
   const EnergyStoneWidget({
     super.key,
     required this.stoneId,
     required this.currentEnergy,
+    required this.stoneColor,
     this.onChargeComplete,
   });
 
@@ -157,14 +159,17 @@ class _EnergyStoneWidgetState extends State<EnergyStoneWidget>
 
   Color _getGlowColor() {
     final progress = _pressProgress;
+    // 使用石头的基础颜色
+    final baseColor = widget.stoneColor;
+    // 根据进度调整亮度
     if (progress < 0.3) {
-      return const Color(0xFF4A3A8A);
+      return baseColor.withOpacity(0.6);
     } else if (progress < 0.6) {
-      return const Color(0xFF6B4EFF);
+      return baseColor.withOpacity(0.8);
     } else if (progress < 0.9) {
-      return const Color(0xFF9D7FFF);
+      return baseColor;
     } else {
-      return const Color(0xFFB794FF);
+      return Color.lerp(baseColor, Colors.white, 0.3) ?? baseColor;
     }
   }
 
@@ -213,8 +218,8 @@ class _EnergyStoneWidgetState extends State<EnergyStoneWidget>
                   gradient: RadialGradient(
                     center: const Alignment(-0.3, -0.3),
                     colors: [
-                      glowColor.withOpacity(0.8),
-                      const Color(0xFF2A2A4A),
+                      glowColor.withOpacity(0.9),
+                      widget.stoneColor.withOpacity(0.4),
                       const Color(0xFF1A1A3A),
                     ],
                     stops: const [0.0, 0.5, 1.0],
@@ -262,11 +267,8 @@ class _EnergyStoneWidgetState extends State<EnergyStoneWidget>
                     widthFactor: _pressProgress,
                     child: Container(
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF6B4EFF),
-                            Color(0xFFB794FF),
-                          ],
+                        gradient: LinearGradient(
+                          colors: [widget.stoneColor, glowColor],
                         ),
                         borderRadius: BorderRadius.circular(3),
                       ),

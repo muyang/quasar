@@ -16,7 +16,7 @@ from tests.test_charge import (
 
 
 def _charge_and_get_today_stone(**kwargs) -> EnergyStone:
-    """创建一颗石头并充能，使其 last_charge_time 为今天 UTC。"""
+    """创建一颗石头并充能，使其 last_check_in_date 为今天 UTC。"""
     stone = _create_stone(**kwargs)
     resp = client.post(f"/api/stone/{stone.id}/charge")
     assert resp.status_code == 200
@@ -34,7 +34,7 @@ def _run_decay():
 
 def test_decay_no_charge_today():
     """当天未充能的石头应衰减 3 点。"""
-    stone = _create_stone(current_energy=50, last_charge_time=None)
+    stone = _create_stone(current_energy=50, last_check_in_date=None)
     _run_decay()
 
     db = TestingSessionLocal()
@@ -57,7 +57,7 @@ def test_no_decay_if_charged_today():
 
 def test_death_reset_when_energy_drops_to_zero():
     """能量耗尽后 death_count 增加，若 < 3 则重置为 5。"""
-    stone = _create_stone(current_energy=2, last_charge_time=None)
+    stone = _create_stone(current_energy=2, last_check_in_date=None)
     _run_decay()
 
     db = TestingSessionLocal()
@@ -71,7 +71,7 @@ def test_death_reset_when_energy_drops_to_zero():
 def test_final_death_when_death_count_reaches_3():
     """death_count >= 3 时石头死亡，能量清零。"""
     stone = _create_stone(
-        current_energy=2, last_charge_time=None, death_count=2
+        current_energy=2, last_check_in_date=None, death_count=2
     )
     _run_decay()
 
@@ -86,7 +86,7 @@ def test_final_death_when_death_count_reaches_3():
 def test_dead_stone_skipped_by_decay():
     """已死亡的石头不应被衰减任务处理。"""
     stone = _create_stone(
-        current_energy=0, status="DEAD", death_count=3, last_charge_time=None
+        current_energy=0, status="DEAD", death_count=3, last_check_in_date=None
     )
     _run_decay()
 
@@ -98,9 +98,9 @@ def test_dead_stone_skipped_by_decay():
 
 
 def test_decay_old_timestamp_not_today():
-    """last_charge_time 是昨天或更早的石头应衰减。"""
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-    stone = _create_stone(current_energy=30, last_charge_time=yesterday)
+    """last_check_in_date 是昨天或更早的石头应衰减。"""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    stone = _create_stone(current_energy=30, last_check_in_date=yesterday)
     _run_decay()
 
     db = TestingSessionLocal()
@@ -111,8 +111,8 @@ def test_decay_old_timestamp_not_today():
 
 def test_decay_multiple_stones_in_one_run():
     """多颗石头同时衰减，各自独立计算。"""
-    stone_a = _create_stone(current_energy=10, last_charge_time=None)
-    stone_b = _create_stone(current_energy=3, last_charge_time=None)
+    stone_a = _create_stone(current_energy=10, last_check_in_date=None)
+    stone_b = _create_stone(current_energy=3, last_check_in_date=None)
     stone_c = _charge_and_get_today_stone(current_energy=50)
     initial_energy = stone_c.current_energy
 
@@ -137,4 +137,16 @@ def test_decay_multiple_stones_in_one_run():
     assert c.current_energy == initial_energy
     assert c.death_count == 0
 
+    db.close()
+
+
+def test_decay_reset_consecutive_days():
+    """衰减应重置连续打卡天数。"""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    stone = _create_stone(current_energy=50, consecutive_days=5, last_check_in_date=yesterday)
+    _run_decay()
+
+    db = TestingSessionLocal()
+    updated = db.query(EnergyStone).filter(EnergyStone.id == stone.id).first()
+    assert updated.consecutive_days == 0
     db.close()

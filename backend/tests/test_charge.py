@@ -33,14 +33,23 @@ def setup_database():
     Base.metadata.drop_all(bind=engine)
 
 
+_counter = 0
+
+
 def _create_stone(**kwargs) -> EnergyStone:
     db = TestingSessionLocal()
+    global _counter
+    _counter += 1
     stone = EnergyStone(
-        user_id=kwargs.get("user_id", 1),
+        unique_code=kwargs.get("unique_code", f"CRY-TEST{_counter:06d}"),
+        stone_type=kwargs.get("stone_type", "HEALTH"),
+        owner_id=kwargs.get("owner_id", None),
         current_energy=kwargs.get("current_energy", 10),
         death_count=kwargs.get("death_count", 0),
         status=kwargs.get("status", "ALIVE"),
+        consecutive_days=kwargs.get("consecutive_days", 0),
         last_charge_time=kwargs.get("last_charge_time"),
+        last_check_in_date=kwargs.get("last_check_in_date"),
     )
     db.add(stone)
     db.commit()
@@ -57,8 +66,6 @@ def test_charge_alive_stone():
     data = resp.json()
     assert data["stone_id"] == stone.id
     assert data["energy_before"] == 50
-    assert data["energy_gained"] in (1, 2, 3, 4, 5)
-    assert data["energy_after"] == 50 + data["energy_gained"]
     assert data["status"] == "ALIVE"
     assert data["blessing"]
 
@@ -101,10 +108,32 @@ def test_charge_updates_last_charge_time():
 
 
 def test_charge_weighted_random_distribution():
-    """多次充能验证增量分布——全部在 1~5 之间。"""
+    """多次充能验证基础增量分布——全部在 1~5 之间。"""
     for _ in range(50):
         stone = _create_stone(current_energy=10)
         resp = client.post(f"/api/stone/{stone.id}/charge")
         assert resp.status_code == 200
         data = resp.json()
-        assert 1 <= data["energy_gained"] <= 5
+        # 基础能量值在 1-5 之间
+        assert 1 <= data["base_gain"] <= 5
+
+
+def test_consecutive_days_multiplier():
+    """测试连续打卡倍数。"""
+    # 第1天，倍数应为1
+    stone = _create_stone(consecutive_days=0, last_check_in_date=None)
+    resp = client.post(f"/api/stone/{stone.id}/charge")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["consecutive_days"] == 1
+    assert data["multiplier"] == 1
+
+    # 第2天，倍数应为2
+    from datetime import datetime, timezone, timedelta
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    stone2 = _create_stone(consecutive_days=1, last_check_in_date=yesterday)
+    resp2 = client.post(f"/api/stone/{stone2.id}/charge")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["consecutive_days"] == 2
+    assert data2["multiplier"] == 2

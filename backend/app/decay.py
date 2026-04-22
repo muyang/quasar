@@ -14,18 +14,13 @@ RESET_ENERGY = 5
 MAX_DEATH_COUNT = 3
 
 
-def _today_in_last_charge(stone: EnergyStone) -> bool:
-    """判断石头的 last_charge_time 是否在 UTC 今天。"""
-    if not stone.last_charge_time:
+def _today_in_last_check_in(stone: EnergyStone) -> bool:
+    """判断石头的 last_check_in_date 是否在 UTC 今天。"""
+    if not stone.last_check_in_date:
         return False
     try:
-        charge_dt = datetime.fromisoformat(stone.last_charge_time)
         now = datetime.now(timezone.utc)
-        return (
-            charge_dt.year == now.year
-            and charge_dt.month == now.month
-            and charge_dt.day == now.day
-        )
+        return stone.last_check_in_date == now.strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         return False
 
@@ -53,7 +48,7 @@ def run_daily_decay(db: Session = None):
 
         decayed_count = 0
         for stone in alive_stones:
-            if _today_in_last_charge(stone):
+            if _today_in_last_check_in(stone):
                 logger.info(
                     f"[Decay] 石头 {stone.id} 今日已充能，跳过衰减"
                 )
@@ -83,6 +78,9 @@ def run_daily_decay(db: Session = None):
                     logger.warning(
                         f"[Decay] 石头 {stone.id} 达到最大枯竭次数 ({MAX_DEATH_COUNT})，已死亡"
                     )
+
+            # 中断连续打卡
+            stone.consecutive_days = 0
 
         db.commit()
         logger.info(
