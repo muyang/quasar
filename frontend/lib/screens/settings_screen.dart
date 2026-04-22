@@ -21,11 +21,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   User? _user;
   List<StoneDetail> _stones = [];
   bool _isLoading = true;
+  String _serverUrl = '';
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadServerUrl();
+  }
+
+  Future<void> _loadServerUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _serverUrl = prefs.getString('server_url')?.replaceAll('/api', '') ?? 'http://192.168.43.6:8000';
+    });
   }
 
   Future<void> _loadData() async {
@@ -67,6 +76,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadData();
       if (widget.onRefresh != null) widget.onRefresh!();
     });
+  }
+
+  void _showServerConfig() {
+    final controller = TextEditingController(text: _serverUrl);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A4A),
+        title: const Text('服务器配置', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '请输入后端服务器地址',
+              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'http://192.168.x.x:8000',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                filled: true,
+                fillColor: const Color(0xFF1A1A2E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF6B4EFF)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newUrl = controller.text.trim();
+              if (newUrl.isNotEmpty) {
+                await ApiService.saveBaseUrl(newUrl);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('服务器地址已更新: $newUrl'),
+                    backgroundColor: const Color(0xFF6B4EFF),
+                  ),
+                );
+                _loadServerUrl();
+                _loadData(); // 重新加载验证连接
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6B4EFF),
+            ),
+            child: const Text('保存', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -333,6 +404,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(
       children: [
         _buildActionButton(
+          icon: Icons.dns_outlined,
+          title: '服务器配置',
+          subtitle: _serverUrl,
+          onTap: _showServerConfig,
+        ),
+        const SizedBox(height: 8),
+        _buildActionButton(
           icon: Icons.shopping_bag_outlined,
           title: '购买新水晶',
           onTap: _goToShop,
@@ -357,6 +435,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildActionButton({
     required IconData icon,
     required String title,
+    String? subtitle,
     required VoidCallback onTap,
     Color? color,
   }) {
@@ -372,12 +451,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Icon(icon, color: color ?? const Color(0xFFB794FF)),
             const SizedBox(width: 16),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                color: color ?? Colors.white,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: color ?? Colors.white,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.5),
+                    ),
+                  ),
+              ],
             ),
             const Spacer(),
             Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.5)),
@@ -407,7 +499,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '版本: v0.2.0',
+            '版本: v0.3.3',
             style: TextStyle(color: Colors.white.withOpacity(0.7)),
           ),
           const SizedBox(height: 4),

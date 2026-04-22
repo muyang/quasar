@@ -1,15 +1,41 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/stone.dart';
 
 class ApiService {
-  // 根据环境切换地址
-  // 真机测试使用实际 IP
-  // 模拟器使用 10.0.2.2
+  // 动态baseUrl，启动时从SharedPreferences加载
   static String baseUrl = 'http://192.168.43.6:8000/api';
+  static const String _defaultBaseUrl = 'http://192.168.43.6:8000/api';
 
-  void setBaseUrl(String url) {
+  /// 初始化baseUrl，从SharedPreferences加载保存的地址
+  static Future<void> initBaseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedUrl = prefs.getString('server_url');
+    if (savedUrl != null && savedUrl.isNotEmpty) {
+      baseUrl = savedUrl;
+      print('[API] 加载保存的服务器地址: $baseUrl');
+    } else {
+      baseUrl = _defaultBaseUrl;
+      print('[API] 使用默认服务器地址: $baseUrl');
+    }
+  }
+
+  /// 保存新的baseUrl到SharedPreferences
+  static Future<void> saveBaseUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 确保url格式正确
+    if (!url.endsWith('/api')) {
+      url = '$url/api';
+    }
+    await prefs.setString('server_url', url);
     baseUrl = url;
+    print('[API] 保存服务器地址: $baseUrl');
+  }
+
+  /// 获取当前baseUrl（不含/api后缀）
+  static String get currentServerUrl {
+    return baseUrl.replaceAll('/api', '');
   }
 
   // ==================== 用户接口 ====================
