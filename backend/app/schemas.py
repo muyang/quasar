@@ -208,3 +208,29 @@ class GiftCardResponse(BaseModel):
     to_user_id: int
     to_user_nickname: Optional[str]
     message: str
+
+
+class PendingCardResponse(BaseModel):
+    id: int
+    card_type: str
+    card_type_name: str
+    mantra: str
+    energy_level: int
+    energy_level_name: str
+    energy_value: int
+    remaining_energy: int
+    color_code: str
+    from_user_id: int
+    from_user_nickname: Optional[str]
+    created_at: str
+
+
+class PendingCardListResponse(BaseModel):
+    cards: List[PendingCardResponse]
+    total: int
+
+
+class AcceptCardResponse(BaseModel):
+    success: bool
+    card_id: int
+    message: str

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../models/stone.dart';
-import 'stone_shop_screen.dart';
-import 'bind_stone_screen.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -15,11 +13,10 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final ApiService _apiService = ApiService();
-  final TextEditingController _nicknameController = TextEditingController();
   final TextEditingController _stoneCodeController = TextEditingController();
-  int _currentStep = 0;
+  final TextEditingController _nicknameController = TextEditingController();
   bool _isLoading = false;
-  User? _user;
+  StoneDetail? _pendingStone; // 待绑定的新用户石头
 
   @override
   void initState() {
@@ -38,41 +35,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  Future<void> _registerUser() async {
-    if (_nicknameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入昵称')),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final user = await _apiService.registerUser(_nicknameController.text.trim());
-      setState(() {
-        _user = user;
-        _isLoading = false;
-        _currentStep = 1;
-      });
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('user_id', user.id);
-
-      print('[Onboarding] 注册成功，用户ID: ${user.id}');
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('注册失败: $e')),
-      );
-    }
-  }
-
-  Future<void> _loginByStone() async {
+  /// 输入水晶编号后的主流程
+  Future<void> _processStoneCode() async {
     final code = _stoneCodeController.text.trim().toUpperCase();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -86,9 +50,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
-      final user = await _apiService.loginByStoneCode(code);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('user_id', user.id);
+      // 检查石头状态
+      final stone = await _apiService.checkStoneStatus(code);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (stone.ownerId != null) {
+        // 老用户：石头已绑定，直接登录
+        _loginExistingUser(stone);
+      } else {
+        // 新用户：石头未绑定，弹出设置昵称
+        _showNicknameDialog(stone);
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('查询失败: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 老用户登录流程
+  void _loginExistingUser(StoneDetail stone) {
+    // 石头已绑定用户，获取用户信息并登录
+    setState(() {
+      _isLoading = true;
+    });
+
+    _apiService.getUser(stone.ownerId!).then((user) {
+      final prefs = SharedPreferences.getInstance();
+      prefs.then((p) => p.setInt('user_id', user.id));
 
       setState(() {
         _isLoading = false;
@@ -99,52 +97,149 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         MaterialPageRoute(builder: (context) => HomeScreen(userId: user.id)),
       );
 
-      print('[Onboarding] 登录成功，用户ID: ${user.id}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('欢迎回来，${user.nickname}！'),
+          backgroundColor: const Color(0xFF6B4EFF),
+        ),
+      );
+    }).catchError((e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('登录失败: $e'), backgroundColor: Colors.red),
+      );
+    });
+  }
+
+  /// 显示设置昵称对话框（新用户）
+  void _showNicknameDialog(StoneDetail stone) {
+    _pendingStone = stone;
+    _nicknameController.clear();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A4A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.diamond, color: _parseColor(stone.colorCode), size: 28),
+            const SizedBox(width: 12),
+            Text('${stone.stoneTypeName}水晶', style: const TextStyle(color: Colors.white, fontSize: 20)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '这是一颗全新的水晶！',
+              style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              stone.uniqueCode,
+              style: TextStyle(color: _parseColor(stone.colorCode), fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '请设置你的昵称',
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nicknameController,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
+              decoration: InputDecoration(
+                hintText: '输入昵称',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                filled: true,
+                fillColor: const Color(0xFF1A1A2E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _pendingStone = null;
+            },
+            child: Text('取消', style: TextStyle(color: Colors.white.withOpacity(0.6))),
+          ),
+          ElevatedButton(
+            onPressed: _bindNewUser,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _parseColor(stone.colorCode),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('确认', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 新用户绑定流程
+  Future<void> _bindNewUser() async {
+    final nickname = _nicknameController.text.trim();
+    if (nickname.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入昵称')),
+      );
+      return;
+    }
+
+    if (_pendingStone == null) return;
+
+    Navigator.pop(context); // 关闭对话框
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = await _apiService.bindStoneToNewUser(_pendingStone!.uniqueCode, nickname);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('user_id', user.id);
+
+      setState(() {
+        _isLoading = false;
+        _pendingStone = null;
+      });
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen(userId: user.id)),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('欢迎加入，$nickname！你的专属ID: ${user.id}'),
+          backgroundColor: const Color(0xFF6B4EFF),
+        ),
+      );
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('登录失败: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('绑定失败: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
-  void _goToShop() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => StoneShopScreen(userId: _user!.id),
-      ),
-    ).then((result) {
-      if (result == true) {
-        // 购买成功，跳转主页
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen(userId: _user!.id)),
-        );
-      }
-    });
-  }
-
-  void _goToBind() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BindStoneScreen(userId: _user!.id),
-      ),
-    ).then((result) {
-      if (result == true) {
-        // 绑定成功，跳转主页
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen(userId: _user!.id)),
-        );
-      }
-    });
+  Color _parseColor(String hexColor) {
+    final hex = hexColor.replaceAll('#', '');
+    return Color(int.parse('FF$hex', radix: 16));
   }
 
   @override
@@ -164,300 +259,111 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(32),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // 进度指示器
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildStepIndicator(0, '设置昵称'),
-                    const SizedBox(width: 16),
-                    _buildStepIndicator(1, '绑定石头'),
-                  ],
+                // Logo
+                const Icon(
+                  Icons.diamond,
+                  size: 100,
+                  color: Color(0xFFB794FF),
                 ),
-                const SizedBox(height: 40),
-                Expanded(
-                  child: _currentStep == 0
-                      ? _buildNicknameStep()
-                      : _buildStoneChoiceStep(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStepIndicator(int step, String label) {
-    final isActive = step <= _currentStep;
-    return Row(
-      children: [
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isActive ? const Color(0xFF6B4EFF) : Colors.grey.withOpacity(0.3),
-          ),
-          child: Center(
-            child: isActive
-                ? const Icon(Icons.check, size: 16, color: Colors.white)
-                : Text(
-                    '${step + 1}',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 12,
-                    ),
+                const SizedBox(height: 24),
+                const Text(
+                  '能量石',
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNicknameStep() {
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.person_outline,
-            size: 80,
-            color: Color(0xFFB794FF),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            '欢迎使用能量石',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '新用户：设置昵称注册',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _nicknameController,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 20),
-            decoration: InputDecoration(
-              hintText: '输入昵称',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              filled: true,
-              fillColor: const Color(0xFF2A2A4A),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _registerUser,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6B4EFF),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text(
-                      '注册新账户',
-                      style: TextStyle(fontSize: 18, color: Colors.white),
+                const SizedBox(height: 12),
+                Text(
+                  '情绪治愈与仪式感的习惯养成',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 48),
+
+                // 输入水晶编号
+                Text(
+                  '输入你的水晶编号',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '新用户首次登录将自动创建账户',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _stoneCodeController,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 20),
+                  decoration: InputDecoration(
+                    hintText: '如 HRY-000001',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                    filled: true,
+                    fillColor: const Color(0xFF2A2A4A),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
-            ),
-          ),
-          const SizedBox(height: 40),
-          // 分隔线
-          Row(
-            children: [
-              Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('老用户', style: TextStyle(color: Colors.white.withOpacity(0.5))),
-              ),
-              Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            '通过水晶编号登录',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _stoneCodeController,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-            decoration: InputDecoration(
-              hintText: '输入水晶编号 (如 CRY-000001)',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              filled: true,
-              fillColor: const Color(0xFF2A2A4A),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _loginByStone,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2A2A4A),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0xFFB794FF)),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
-              ),
-              child: const Text(
-                '登录',
-                style: TextStyle(fontSize: 18, color: Color(0xFFB794FF)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _processStoneCode,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6B4EFF),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            '登录',
+                            style: TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.w600),
+                          ),
+                  ),
+                ),
 
-  Widget _buildStoneChoiceStep() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(
-          Icons.diamond,
-          size: 80,
-          color: Color(0xFFB794FF),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          '你的专属ID: ${_user?.id ?? ""}',
-          style: const TextStyle(
-            fontSize: 18,
-            color: Color(0xFFB794FF),
-          ),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          '现在，选择你的能量石',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton(
-            onPressed: _goToShop,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6B4EFF),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.shopping_bag_outlined, color: Colors.white),
-                SizedBox(width: 8),
+                const Spacer(),
+
+                // 提示
                 Text(
-                  '购买新水晶',
-                  style: TextStyle(fontSize: 18, color: Colors.white),
+                  '后续支持扫码/NFC登录',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withOpacity(0.4),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton(
-            onPressed: _goToBind,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A4A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.link, color: Color(0xFFB794FF)),
-                SizedBox(width: 8),
-                Text(
-                  '绑定已有水晶',
-                  style: TextStyle(fontSize: 18, color: Color(0xFFB794FF)),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          '每颗水晶都有唯一编号',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.white.withOpacity(0.5),
-          ),
-        ),
-        const SizedBox(height: 32),
-        // 退出按钮 - 稍后可在设置页购买或绑定
-        TextButton(
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => HomeScreen(userId: _user!.id)),
-            );
-          },
-          child: Text(
-            '暂时跳过，稍后在设置页添加',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.6),
-              decoration: TextDecoration.underline,
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   @override
   void dispose() {
-    _nicknameController.dispose();
     _stoneCodeController.dispose();
+    _nicknameController.dispose();
     super.dispose();
   }
 }

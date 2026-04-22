@@ -12,7 +12,8 @@ from app.schemas import (
     TransferRequest, TransferResponse, StoneDetailResponse, StoneListResponse,
     StoneStatus, STONE_TYPES, ENERGY_LEVELS, CARD_TYPE_NAMES,
     CardResponse, CardListResponse, DrawCardRequest, DrawCardResponse, DrawStatusResponse,
-    ChargeCardRequest, ChargeCardResponse, GiftCardRequest, GiftCardResponse
+    ChargeCardRequest, ChargeCardResponse, GiftCardRequest, GiftCardResponse,
+    PendingCardResponse, PendingCardListResponse, AcceptCardResponse
 )
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -714,6 +715,54 @@ def get_stone_by_code(unique_code: str, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/stone/code/{unique_code}/bind-new-user", response_model=UserResponse)
+def bind_stone_to_new_user(unique_code: str, request: UserRegisterRequest, db: Session = Depends(get_db)):
+    """为未绑定的石头创建新用户并绑定（新用户首次登录流程）。"""
+    stone = db.query(EnergyStone).filter(EnergyStone.unique_code == unique_code.upper()).first()
+    if not stone:
+        raise HTTPException(status_code=404, detail="石头不存在")
+
+    if stone.owner_id:
+        raise HTTPException(status_code=400, detail="该石头已被其他用户绑定，请使用其他石头编号")
+
+    # 创建新用户
+    new_user = User(
+        nickname=request.nickname,
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
+    db.add(new_user)
+    db.flush()  # 获取用户ID
+
+    # 绑定石头到新用户
+    stone.owner_id = new_user.id
+    db.commit()
+    db.refresh(new_user)
+
+    # 返回用户信息和石头列表
+    stones = db.query(EnergyStone).filter(EnergyStone.owner_id == new_user.id).all()
+    stone_list = [
+        StoneStatus(
+            id=s.id,
+            unique_code=s.unique_code,
+            stone_type=s.stone_type,
+            owner_id=s.owner_id,
+            current_energy=s.current_energy,
+            death_count=s.death_count,
+            status=s.status,
+            consecutive_days=s.consecutive_days,
+            last_charge_time=s.last_charge_time
+        )
+        for s in stones
+    ]
+
+    return UserResponse(
+        id=new_user.id,
+        nickname=new_user.nickname,
+        created_at=new_user.created_at,
+        stones=stone_list
+    )
+
+
 @router.get("/user/{user_id}/stones", response_model=StoneListResponse)
 def get_user_stones(user_id: int, db: Session = Depends(get_db)):
     """获取用户的所有石头。"""
@@ -928,12 +977,16 @@ def draw_card(request: DrawCardRequest, db: Session = Depends(get_db)):
 
 @router.get("/user/{user_id}/cards", response_model=CardListResponse)
 def get_user_cards(user_id: int, db: Session = Depends(get_db)):
-    """获取用户的所有卡牌。"""
+    """获取用户的所有卡牌（已接收的）。"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    cards = db.query(Card).filter(Card.owner_id == user_id).order_by(Card.created_at.desc()).all()
+    # 查询已接收的卡牌（排除PENDING状态）
+    cards = db.query(Card).filter(
+        Card.owner_id == user_id,
+        Card.gift_status != "PENDING"
+    ).order_by(Card.created_at.desc()).all()
 
     # 获取用户拥有的石头类型，用于判断卡牌是否可充值
     user_stone_types = set()
@@ -1028,10 +1081,14 @@ def charge_card_to_stone(card_id: int, request: ChargeCardRequest, db: Session =
 
 @router.post("/card/{card_id}/gift", response_model=GiftCardResponse)
 def gift_card(card_id: int, request: GiftCardRequest, db: Session = Depends(get_db)):
-    """赠送卡牌给其他用户。"""
+    """赠送卡牌给其他用户（发送后等待接收确认）。"""
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="卡牌不存在")
+
+    # 检查当前用户是否拥有这张卡牌
+    if card.owner_id is None:
+        raise HTTPException(status_code=400, detail="该卡牌无主人，无法赠送")
 
     to_user = db.query(User).filter(User.id == request.to_user_id).first()
     if not to_user:
@@ -1040,23 +1097,101 @@ def gift_card(card_id: int, request: GiftCardRequest, db: Session = Depends(get_
     if card.owner_id == request.to_user_id:
         raise HTTPException(status_code=400, detail="不能赠送给自己")
 
+    # 检查卡牌状态
+    if card.gift_status == "PENDING":
+        raise HTTPException(status_code=400, detail="该卡牌正在等待被接收，无法再次赠送")
+
     # 检查卡牌是否有剩余能量
     remaining = card.energy_value - card.energy_consumed
     if remaining <= 0:
         raise HTTPException(status_code=400, detail="卡牌能量已耗尽，无法赠送")
 
-    # 转移卡牌所有权
+    # 记录赠送者并设置等待状态
+    from_user_id = card.owner_id
     card.owner_id = request.to_user_id
+    card.gift_from_id = from_user_id
+    card.gift_status = "PENDING"
     db.commit()
     db.refresh(card)
 
     return GiftCardResponse(
         success=True,
         card_id=card.id,
-        from_user_id=card.owner_id,
+        from_user_id=from_user_id,
         to_user_id=request.to_user_id,
         to_user_nickname=to_user.nickname,
-        message=f"成功将卡牌赠送给 {to_user.nickname}"
+        message=f"卡牌已发送给 {to_user.nickname}，等待对方确认接收"
+    )
+
+
+@router.get("/user/{user_id}/pending-cards", response_model=PendingCardListResponse)
+def get_pending_cards(user_id: int, db: Session = Depends(get_db)):
+    """获取待接收的卡牌消息。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 查询待接收的卡牌（owner_id=user_id且gift_status=PENDING）
+    pending_cards = db.query(Card).filter(
+        Card.owner_id == user_id,
+        Card.gift_status == "PENDING"
+    ).all()
+
+    result = []
+    for card in pending_cards:
+        remaining = card.energy_value - card.energy_consumed
+        type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+        level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+
+        # 获取赠送者昵称
+        from_nickname = None
+        if card.gift_from_id:
+            from_user = db.query(User).filter(User.id == card.gift_from_id).first()
+            from_nickname = from_user.nickname if from_user else None
+
+        result.append(PendingCardResponse(
+            id=card.id,
+            card_type=card.card_type,
+            card_type_name=type_name,
+            mantra=card.mantra,
+            energy_level=card.energy_level,
+            energy_level_name=level_name,
+            energy_value=card.energy_value,
+            remaining_energy=remaining,
+            color_code=_get_card_color_code(card.card_type),
+            from_user_id=card.gift_from_id or 0,
+            from_user_nickname=from_nickname,
+            created_at=card.created_at
+        ))
+
+    return PendingCardListResponse(cards=result, total=len(result))
+
+
+@router.post("/card/{card_id}/accept", response_model=AcceptCardResponse)
+def accept_card(card_id: int, user_id: int, db: Session = Depends(get_db)):
+    """确认接收卡牌。"""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡牌不存在")
+
+    if card.owner_id != user_id:
+        raise HTTPException(status_code=400, detail="这张卡牌不是发送给您的")
+
+    if card.gift_status != "PENDING":
+        raise HTTPException(status_code=400, detail="该卡牌不在待接收状态")
+
+    # 确认接收
+    card.gift_status = "RECEIVED"
+    db.commit()
+    db.refresh(card)
+
+    type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+    level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+
+    return AcceptCardResponse(
+        success=True,
+        card_id=card.id,
+        message=f"已成功接收【{type_name}】{level_name}级卡牌"
     )
 
 

@@ -457,3 +457,52 @@ class ChargeCardResponse {
     );
   }
 }
+
+// ==================== 待接收卡牌模型 ====================
+
+class PendingCard {
+  final int id;
+  final String cardType;
+  final String cardTypeName;
+  final String mantra;
+  final int energyLevel;
+  final String energyLevelName;
+  final int energyValue;
+  final int remainingEnergy;
+  final String colorCode;
+  final int fromUserId;
+  final String? fromUserNickname;
+  final String createdAt;
+
+  PendingCard({
+    required this.id,
+    required this.cardType,
+    required this.cardTypeName,
+    required this.mantra,
+    required this.energyLevel,
+    required this.energyLevelName,
+    required this.energyValue,
+    required this.remainingEnergy,
+    required this.colorCode,
+    required this.fromUserId,
+    this.fromUserNickname,
+    required this.createdAt,
+  });
+
+  factory PendingCard.fromJson(Map<String, dynamic> json) {
+    return PendingCard(
+      id: json['id'] as int,
+      cardType: json['card_type'] as String,
+      cardTypeName: json['card_type_name'] as String,
+      mantra: json['mantra'] as String,
+      energyLevel: json['energy_level'] as int,
+      energyLevelName: json['energy_level_name'] as String,
+      energyValue: json['energy_value'] as int,
+      remainingEnergy: json['remaining_energy'] as int,
+      colorCode: json['color_code'] as String,
+      fromUserId: json['from_user_id'] as int,
+      fromUserNickname: json['from_user_nickname'] as String?,
+      createdAt: json['created_at'] as String,
+    );
+  }
+}

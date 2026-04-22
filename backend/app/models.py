@@ -75,6 +75,8 @@ class Card(Base):
     energy_value = Column(Integer, nullable=False)  # 能量值
     energy_consumed = Column(Integer, nullable=False, default=0)  # 已消耗能量值
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 所属用户
+    gift_status = Column(String, nullable=False, default="NORMAL")  # NORMAL/PENDING/RECEIVED 赠送状态
+    gift_from_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 赠送者ID
     created_at = Column(String, nullable=False)
 
 

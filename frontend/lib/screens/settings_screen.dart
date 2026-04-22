@@ -19,7 +19,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final ApiService _apiService = ApiService();
   User? _user;
-  List<StoneDetail> _stones = [];
   bool _isLoading = true;
   String _serverUrl = '';
 
@@ -40,10 +39,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadData() async {
     try {
       final user = await _apiService.getUser(widget.userId);
-      final stones = await _apiService.getUserStones(widget.userId);
       setState(() {
         _user = user;
-        _stones = stones;
         _isLoading = false;
       });
     } catch (e) {
@@ -127,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
                 _loadServerUrl();
-                _loadData(); // 重新加载验证连接
+                _loadData();
               }
             },
             style: ElevatedButton.styleFrom(
@@ -176,28 +173,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 用户信息卡片
+                    // 用户信息卡片（精简版）
                     _buildUserInfoCard(),
-                    const SizedBox(height: 24),
-
-                    // 石头管理
-                    const Text(
-                      '我的水晶',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _stones.isEmpty
-                        ? _buildNoStonesCard()
-                        : _buildStonesList(),
                     const SizedBox(height: 24),
 
                     // 操作按钮
                     const Text(
-                      '操作',
+                      '水晶管理',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -205,19 +187,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildActionButtons(),
+                    _buildCrystalButtons(),
+                    const SizedBox(height: 24),
+
+                    // 系统设置
+                    const Text(
+                      '系统',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSystemButtons(),
                     const SizedBox(height: 24),
 
                     // 关于
-                    const Text(
-                      '关于',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     _buildAboutSection(),
                   ],
                 ),
@@ -243,173 +229,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFFB794FF).withOpacity(0.5),
             ),
-            child: const Icon(Icons.person, size: 32, color: Colors.white),
+            child: const Icon(Icons.person, size: 28, color: Colors.white),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _user?.nickname ?? '用户',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _user?.nickname ?? '用户',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'ID: ${_user?.id ?? ""}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white.withOpacity(0.7),
+                const SizedBox(height: 4),
+                Text(
+                  'ID: ${_user?.id ?? ""}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Column(
-            children: [
-              Text(
-                '${_stones.length}',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFB794FF),
-                ),
-              ),
-              Text(
-                '颗水晶',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNoStonesCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A4A).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.inbox, color: Colors.white54, size: 32),
-          const SizedBox(width: 16),
-          Text(
-            '还没有绑定水晶',
-            style: TextStyle(color: Colors.white.withOpacity(0.7)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStonesList() {
-    return Column(
-      children: _stones.map((stone) => _buildStoneCard(stone)).toList(),
-    );
-  }
-
-  Widget _buildStoneCard(StoneDetail stone) {
-    final color = _parseColor(stone.colorCode);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withOpacity(0.2),
-            const Color(0xFF2A2A4A),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                center: const Alignment(-0.3, -0.3),
-                colors: [color, color.withOpacity(0.5)],
-              ),
+              ],
             ),
           ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                stone.stoneTypeName,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                stone.uniqueCode,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${stone.currentEnergy}',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              Text(
-                stone.status == 'ALIVE' ? '能量' : '枯竭',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildCrystalButtons() {
     return Column(
       children: [
-        _buildActionButton(
-          icon: Icons.dns_outlined,
-          title: '服务器配置',
-          subtitle: _serverUrl,
-          onTap: _showServerConfig,
-        ),
-        const SizedBox(height: 8),
         _buildActionButton(
           icon: Icons.shopping_bag_outlined,
           title: '购买新水晶',
@@ -420,6 +279,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           icon: Icons.link,
           title: '绑定已有水晶',
           onTap: _goToBind,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSystemButtons() {
+    return Column(
+      children: [
+        _buildActionButton(
+          icon: Icons.dns_outlined,
+          title: '服务器配置',
+          subtitle: _serverUrl,
+          onTap: _showServerConfig,
         ),
         const SizedBox(height: 8),
         _buildActionButton(
@@ -451,27 +323,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Icon(icon, color: color ?? const Color(0xFFB794FF)),
             const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: color ?? Colors.white,
-                  ),
-                ),
-                if (subtitle != null)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitle,
+                    title,
                     style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 16,
+                      color: color ?? Colors.white,
                     ),
                   ),
-              ],
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
-            const Spacer(),
             Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.5)),
           ],
         ),
@@ -489,17 +363,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '能量石',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
+          Row(
+            children: [
+              const Icon(Icons.diamond, color: Color(0xFFB794FF), size: 24),
+              const SizedBox(width: 12),
+              const Text(
+                '能量石',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            '版本: v0.3.3',
+            '版本: v0.4.0',
             style: TextStyle(color: Colors.white.withOpacity(0.7)),
           ),
           const SizedBox(height: 4),
@@ -510,10 +390,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
-
-  Color _parseColor(String hexColor) {
-    final hex = hexColor.replaceAll('#', '');
-    return Color(int.parse('FF$hex', radix: 16));
   }
 }

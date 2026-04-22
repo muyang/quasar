@@ -5,8 +5,8 @@ import '../models/stone.dart';
 
 class ApiService {
   // 动态baseUrl，启动时从SharedPreferences加载
-  static String baseUrl = 'http://192.168.43.6:8000/api';
-  static const String _defaultBaseUrl = 'http://192.168.43.6:8000/api';
+  static String baseUrl = 'http://192.168.1.78:8000/api';
+  static const String _defaultBaseUrl = 'http://192.168.1.78:8000/api';
 
   /// 初始化baseUrl，从SharedPreferences加载保存的地址
   static Future<void> initBaseUrl() async {
@@ -310,6 +310,56 @@ class ApiService {
 
   // ==================== 登录接口 ====================
 
+  /// 检查石头编号是否存在及绑定状态
+  Future<StoneDetail> checkStoneStatus(String uniqueCode) async {
+    final url = Uri.parse('$baseUrl/stone/code/${uniqueCode.toUpperCase()}');
+    print('[API] 检查石头状态: $url');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 石头信息: ${data}');
+        return StoneDetail.fromJson(data);
+      } else if (response.statusCode == 404) {
+        throw Exception('石头不存在');
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '查询失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  /// 为未绑定的石头创建新用户并绑定
+  Future<User> bindStoneToNewUser(String uniqueCode, String nickname) async {
+    final url = Uri.parse('$baseUrl/stone/code/${uniqueCode.toUpperCase()}/bind-new-user');
+    print('[API] 绑定石头到新用户: $url, code: $uniqueCode, nickname: $nickname');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'nickname': nickname}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 绑定成功: ${data}');
+        return User.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '绑定失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
   Future<User> loginByStoneCode(String uniqueCode) async {
     final url = Uri.parse('$baseUrl/user/login-by-stone');
     print('[API] 通过石头编号登录: $url, code: $uniqueCode');
@@ -451,6 +501,51 @@ class ApiService {
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['detail'] ?? '赠送失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== 待接收卡牌接口 ====================
+
+  Future<List<PendingCard>> getPendingCards(int userId) async {
+    final url = Uri.parse('$baseUrl/user/$userId/pending-cards');
+    print('[API] 获取待接收卡牌: $url');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final cards = data['cards'] as List;
+        print('[API] 获取到 ${cards.length} 张待接收卡牌');
+        return cards.map((c) => PendingCard.fromJson(c)).toList();
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<bool> acceptCard(int cardId, int userId) async {
+    final url = Uri.parse('$baseUrl/card/$cardId/accept?user_id=$userId');
+    print('[API] 确认接收卡牌: $url, cardId: $cardId, userId: $userId');
+
+    try {
+      final response = await http.post(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 接收成功: ${data}');
+        return true;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '接收失败');
       }
     } catch (e) {
       print('[API] 请求异常: $e');
