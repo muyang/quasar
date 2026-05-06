@@ -744,15 +744,15 @@ class ApiService {
     }
   }
 
-  Future<PlazaPost> createPlazaPost(int userId, String postType, String content) async {
+  Future<PlazaPost> createPlazaPost(int userId, String postType, String content, {String? tag}) async {
     final url = Uri.parse('$baseUrl/plaza/post');
-    print('[API] 创建广场帖子: $url');
+    print('[API] 创建广场帖子: $url (tag=$tag)');
 
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'post_type': postType, 'content': content}),
+        body: jsonEncode({'user_id': userId, 'post_type': postType, 'content': content, 'tag': tag}),
       );
 
       if (response.statusCode == 200) {
@@ -779,6 +779,43 @@ class ApiService {
       } else {
         final error = jsonDecode(response.body);
         throw Exception(error['detail'] ?? '祈福失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> giftEnergyToPost(int postId, int userId, {int energyValue = 1}) async {
+    final url = Uri.parse('$baseUrl/plaza/post/$postId/gift?user_id=$userId&energy_value=$energyValue');
+    print('[API] 赠送能量: $url');
+
+    try {
+      final response = await http.post(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '赠送失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<List<PlazaGifter>> getPostGifters(int postId) async {
+    final url = Uri.parse('$baseUrl/plaza/post/$postId/gifters');
+    print('[API] 获取赠送者: $url');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['gifters'] as List;
+        return list.map((g) => PlazaGifter.fromJson(g)).toList();
+      } else {
+        throw Exception('获取失败');
       }
     } catch (e) {
       print('[API] 请求异常: $e');

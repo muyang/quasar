@@ -35,7 +35,7 @@ def _build_preset_response(c):
         energy_level=c.energy_level, image_url=c.image_url,
         card_id=c.card_id, name=c.name, faction=c.faction,
         rarity=c.rarity, card_type_sub=c.card_type_sub,
-        cost=c.cost, tags_json=c.tags_json,
+        cost=c.cost, stats_json=c.stats_json, tags_json=c.tags_json,
         status=c.status,
         card_width=c.card_width, card_height=c.card_height,
         image_fit=c.image_fit,
@@ -84,7 +84,7 @@ def list_preset_cards(
             energy_level=c.energy_level, image_url=c.image_url,
             card_id=c.card_id, name=c.name, faction=c.faction,
             rarity=c.rarity, card_type_sub=c.card_type_sub,
-            cost=c.cost, tags_json=c.tags_json,
+            cost=c.cost, stats_json=c.stats_json, tags_json=c.tags_json,
             status=c.status,
             card_width=c.card_width, card_height=c.card_height,
             image_fit=c.image_fit,
@@ -159,6 +159,14 @@ def update_preset_card(
         card.margin_bottom = request.margin_bottom
     if request.margin_right is not None:
         card.margin_right = request.margin_right
+    if request.card_type_sub is not None:
+        card.card_type_sub = request.card_type_sub
+    if request.cost is not None:
+        card.cost = request.cost
+    if request.stats_json is not None:
+        card.stats_json = request.stats_json
+    if request.tags_json is not None:
+        card.tags_json = request.tags_json
     db.commit()
     db.refresh(card)
     return _build_preset_response(card)

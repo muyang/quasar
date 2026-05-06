@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/stone.dart';
+import 'plaza_detail_screen.dart';
 
 class PlazaScreen extends StatefulWidget {
   final int userId;
@@ -37,7 +38,16 @@ class _PlazaScreenState extends State<PlazaScreen> {
 
   void _showCreateDialog() {
     String postType = 'BLESSING';
+    String? tag = null;
     final contentCtrl = TextEditingController();
+    const tagOptions = [
+      {'key': null, 'label': '无'},
+      {'key': 'HEALTH', 'label': '健康'},
+      {'key': 'LOVE', 'label': '爱情'},
+      {'key': 'WEALTH', 'label': '财富'},
+      {'key': 'CAREER', 'label': '事业'},
+      {'key': 'FAMILY', 'label': '家庭'},
+    ];
 
     showDialog(
       context: context,
@@ -62,6 +72,21 @@ class _PlazaScreenState extends State<PlazaScreen> {
                   }),
                 ),
               ),
+              const SizedBox(height: 12),
+              const Text('能量标签（他人赠送的能量将充入此类型能量石）', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: tagOptions.map((t) => ChoiceChip(
+                  label: Text(t['label'] as String, style: const TextStyle(fontSize: 12)),
+                  selected: tag == t['key'],
+                  selectedColor: _tagDisplayColor(t['key']).withOpacity(0.4),
+                  backgroundColor: const Color(0xFF3A3A5A),
+                  checkmarkColor: Colors.white,
+                  side: BorderSide(color: tag == t['key'] ? _tagDisplayColor(t['key']) : Colors.white12),
+                  onSelected: (_) => setDialogState(() => tag = t['key'] as String?),
+                )).toList(),
+              ),
               const SizedBox(height: 16),
               TextField(
                 controller: contentCtrl,
@@ -82,7 +107,7 @@ class _PlazaScreenState extends State<PlazaScreen> {
               onPressed: () async {
                 if (contentCtrl.text.isEmpty) return;
                 try {
-                  await _api.createPlazaPost(widget.userId, postType, contentCtrl.text);
+                  await _api.createPlazaPost(widget.userId, postType, contentCtrl.text, tag: tag);
                   Navigator.pop(ctx);
                   _loadPosts();
                 } catch (e) {
@@ -186,85 +211,128 @@ class _PlazaScreenState extends State<PlazaScreen> {
 
   Widget _buildPostCard(PlazaPost post) {
     final isActivity = post.postType == 'ACTIVITY';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isActivity ? const Color(0xFF1A1A3A) : const Color(0xFF2A2A4A),
-        borderRadius: BorderRadius.circular(16),
-        border: isActivity ? Border.all(color: const Color(0xFF6B4EFF).withOpacity(0.3)) : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _postTypeColor(post.postType).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  post.postTypeLabel,
-                  style: TextStyle(color: _postTypeColor(post.postType), fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                post.userNickname ?? '平台',
-                style: TextStyle(
-                  color: isActivity ? const Color(0xFFB794FF) : Colors.white54,
-                  fontSize: 13,
-                  fontWeight: isActivity ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              const Spacer(),
-              Text(_formatTime(post.createdAt), style: const TextStyle(color: Colors.white24, fontSize: 11)),
-            ],
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PlazaDetailScreen(
+              post: post,
+              userId: widget.userId,
+              onChanged: _loadPosts,
+            ),
           ),
-          const SizedBox(height: 12),
-          Text(post.content, style: const TextStyle(color: Colors.white, fontSize: 15)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: post.hasPrayed ? null : () => _prayPost(post),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.favorite,
-                      size: 18,
-                      color: post.hasPrayed ? const Color(0xFFE91E63) : Colors.white38,
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isActivity ? const Color(0xFF1A1A3A) : const Color(0xFF2A2A4A),
+          borderRadius: BorderRadius.circular(16),
+          border: isActivity ? Border.all(color: const Color(0xFF6B4EFF).withOpacity(0.3)) : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _postTypeColor(post.postType).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    post.postTypeLabel,
+                    style: TextStyle(color: _postTypeColor(post.postType), fontSize: 12),
+                  ),
+                ),
+                if (post.tag != null && post.tag!.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: post.tagColor.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 4),
-                    Text('${post.prayCount}', style: TextStyle(color: post.hasPrayed ? const Color(0xFFE91E63) : Colors.white38)),
-                  ],
+                    child: Text(post.tagLabel, style: TextStyle(color: post.tagColor, fontSize: 11)),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                Text(
+                  post.userNickname ?? '平台',
+                  style: TextStyle(
+                    color: isActivity ? const Color(0xFFB794FF) : Colors.white54,
+                    fontSize: 13,
+                    fontWeight: isActivity ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const Spacer(),
+                Text(_formatTime(post.createdAt), style: const TextStyle(color: Colors.white24, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(post.content, style: const TextStyle(color: Colors.white, fontSize: 15)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: post.hasPrayed ? null : () => _giftEnergy(post),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.bolt,
+                        size: 18,
+                        color: post.hasPrayed ? const Color(0xFFFFD700) : Colors.white38,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        post.hasPrayed ? '已赠送' : '赠送能量',
+                        style: TextStyle(
+                          color: post.hasPrayed ? const Color(0xFFFFD700) : Colors.white38,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Icon(Icons.bolt, size: 14, color: const Color(0xFFFFD700).withOpacity(0.6)),
+                const SizedBox(width: 2),
+                Text('${post.totalEnergyReceived}', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _prayPost(PlazaPost post) async {
+  Future<void> _giftEnergy(PlazaPost post) async {
     try {
-      final result = await _api.prayPost(post.id, widget.userId);
-      setState(() {
-        post = PlazaPost(
-          id: post.id, userId: post.userId, userNickname: post.userNickname,
-          postType: post.postType, content: post.content,
-          prayCount: result['pray_count'] ?? post.prayCount + 1,
-          hasPrayed: true, createdAt: post.createdAt,
+      final result = await _api.giftEnergyToPost(post.id, widget.userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? '赠送成功'), backgroundColor: const Color(0xFF4CAF50)),
         );
-      });
+      }
       _loadPosts();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
       }
+    }
+  }
+
+  Color _tagDisplayColor(String? tag) {
+    switch (tag) {
+      case 'HEALTH': return const Color(0xFF4CAF50);
+      case 'LOVE': return const Color(0xFFE91E63);
+      case 'WEALTH': return const Color(0xFFFFD700);
+      case 'CAREER': return const Color(0xFFF44336);
+      case 'FAMILY': return const Color(0xFF2196F3);
+      default: return const Color(0xFF888888);
     }
   }
 

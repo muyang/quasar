@@ -1,11 +1,13 @@
+import json as _json
 import random
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
-from app.models import EnergyStone, CheckInRecord, User, TransferRecord, Card, UserDrawRecord, PresetCard
+from app.models import EnergyStone, CheckInRecord, User, TransferRecord, Card, UserDrawRecord, PresetCard, StoreItem, Message, PlazaPost, PlazaPray
 from app.schemas import (
     ChargeResponse, CheckInStatusResponse, CheckInRecordResponse, CheckInRecordsResponse,
     UserResponse, UserRegisterRequest, LoginByStoneRequest, StoneCreateRequest, StoneBindRequest,
@@ -13,8 +15,15 @@ from app.schemas import (
     StoneStatus, STONE_TYPES, ENERGY_LEVELS, CARD_TYPE_NAMES,
     CardResponse, CardListResponse, DrawCardRequest, DrawCardResponse, DrawStatusResponse,
     ChargeCardRequest, ChargeCardResponse, GiftCardRequest, GiftCardResponse,
-    PendingCardResponse, PendingCardListResponse, AcceptCardResponse
+    PendingCardResponse, PendingCardListResponse, AcceptCardResponse,
+    SynthesizeRequest, SynthesizeResponse, CollectionProgress, CollectionResponse,
+    StoreItemResponse, StoreItemListResponse, PurchaseRequest, PurchaseResponse,
+    MessageResponse, MessageListResponse, SendMessageRequest,
+    PlazaPostResponse, PlazaPostListResponse, CreatePostRequest, PrayResponse,
+    GiftEnergyResponse, PlazaGifterInfo,
+    CardStats, CardEffect, RARITY_NAMES, CARD_TYPE_SUB_NAMES,
 )
+from app.card_service import draw_card_gacha, get_pity_counters, synthesize_cards as svc_synthesize
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -224,6 +233,73 @@ def _generate_energy_value(level: int) -> int:
 def _get_card_color_code(card_type: str) -> str:
     """获取卡牌颜色代码。"""
     return STONE_TYPES.get(card_type, {}).get("color_code", "#4CAF50")
+
+
+def _build_card_response(c: Card) -> CardResponse:
+    """构建CardResponse，包含v0.6.0新字段。"""
+    remaining = c.energy_value - c.energy_consumed
+    type_name = CARD_TYPE_NAMES.get(c.card_type, "未知")
+    level_name = ENERGY_LEVELS.get(c.energy_level, {}).get("name", "未知")
+    rarity_name = RARITY_NAMES.get(c.rarity) if c.rarity else None
+    card_type_sub_name = CARD_TYPE_SUB_NAMES.get(c.card_type_sub) if c.card_type_sub else None
+
+    stats = None
+    if c.stats_json:
+        try:
+            s = _json.loads(c.stats_json)
+            stats = CardStats(attack=s.get("attack", 0), health=s.get("health", 0))
+        except Exception:
+            pass
+
+    tags = None
+    if c.tags_json:
+        try:
+            tags = _json.loads(c.tags_json)
+        except Exception:
+            pass
+
+    effects = None
+    if c.effects_json:
+        try:
+            eff_list = _json.loads(c.effects_json)
+            effects = [CardEffect(**e) for e in eff_list]
+        except Exception:
+            pass
+
+    return CardResponse(
+        id=c.id,
+        card_type=c.card_type,
+        card_type_name=type_name,
+        mantra=c.mantra,
+        energy_level=c.energy_level,
+        energy_level_name=level_name,
+        energy_value=c.energy_value,
+        energy_consumed=c.energy_consumed,
+        remaining_energy=remaining,
+        color_code=_get_card_color_code(c.card_type),
+        can_charge=remaining > 0,
+        created_at=c.created_at,
+        image_url=c.image_url,
+        card_id=c.card_id_ref,
+        name=c.name,
+        faction=c.faction,
+        rarity=c.rarity,
+        rarity_name=rarity_name,
+        card_type_sub=c.card_type_sub,
+        card_type_sub_name=card_type_sub_name,
+        cost=c.cost,
+        stats=stats,
+        tags=tags,
+        effects=effects,
+        lore=c.lore,
+        card_width=c.card_width,
+        card_height=c.card_height,
+        image_fit=c.image_fit or "COVER",
+        margin_top=c.margin_top or 0,
+        margin_left=c.margin_left or 0,
+        margin_bottom=c.margin_bottom or 0,
+        margin_right=c.margin_right or 0,
+    )
 
 
 # ==================== 用户接口 ====================
@@ -837,10 +913,15 @@ def get_draw_status(user_id: int, db: Session = Depends(get_db)):
 
     energy_draws_remaining = MAX_ENERGY_DRAWS_PER_DAY - energy_draws_used
 
+    # v0.6.0 获取保底计数器
+    pity = get_pity_counters(db, user_id)
+
     return DrawStatusResponse(
         free_draws_available=free_draws_available,
         energy_draws_used=energy_draws_used,
-        energy_draws_remaining=energy_draws_remaining
+        energy_draws_remaining=energy_draws_remaining,
+        pity_gold=pity.pulls_since_gold,
+        pity_black_gold=pity.pulls_since_black_gold,
     )
 
 
@@ -908,34 +989,11 @@ def draw_card(request: DrawCardRequest, db: Session = Depends(get_db)):
     else:
         raise HTTPException(status_code=400, detail="无效的抽卡类型")
 
-    # 从预设卡牌池随机抽取一张
-    preset_cards = db.query(PresetCard).all()
-    if not preset_cards:
-        raise HTTPException(status_code=500, detail="卡牌池未初始化")
-
-    # 按能量等级加权：低级别概率高，高级别概率低
-    level_weights = {1: 40, 2: 30, 3: 20, 4: 8, 5: 2}
-    weighted_cards = []
-    for card in preset_cards:
-        weight = level_weights.get(card.energy_level, 10)
-        weighted_cards.extend([card] * weight)
-
-    selected_preset = random.choice(weighted_cards)
-
-    # 创建用户卡牌
-    energy_value = _generate_energy_value(selected_preset.energy_level)
-    new_card = Card(
-        preset_card_id=selected_preset.id,
-        card_type=selected_preset.card_type,
-        mantra=selected_preset.mantra,
-        energy_level=selected_preset.energy_level,
-        energy_value=energy_value,
-        energy_consumed=0,
-        owner_id=request.user_id,
-        created_at=datetime.now(timezone.utc).isoformat()
-    )
-    db.add(new_card)
-    db.flush()  # 先flush获取ID
+    # v0.6.0 使用抽卡系统（含保底）
+    try:
+        new_card = draw_card_gacha(db, request.user_id, request.draw_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"抽卡失败: {e}")
 
     # 记录抽卡
     draw_record = UserDrawRecord(
@@ -946,30 +1004,16 @@ def draw_card(request: DrawCardRequest, db: Session = Depends(get_db)):
         created_at=datetime.now(timezone.utc).isoformat()
     )
     db.add(draw_record)
-
     db.commit()
     db.refresh(new_card)
 
+    rarity_cn = RARITY_NAMES.get(new_card.rarity, "") if new_card.rarity else ""
     type_name = CARD_TYPE_NAMES.get(new_card.card_type, "未知")
-    level_name = ENERGY_LEVELS.get(new_card.energy_level, {}).get("name", "未知")
 
     return DrawCardResponse(
         success=True,
-        card=CardResponse(
-            id=new_card.id,
-            card_type=new_card.card_type,
-            card_type_name=type_name,
-            mantra=new_card.mantra,
-            energy_level=new_card.energy_level,
-            energy_level_name=level_name,
-            energy_value=new_card.energy_value,
-            energy_consumed=new_card.energy_consumed,
-            remaining_energy=new_card.energy_value - new_card.energy_consumed,
-            color_code=_get_card_color_code(new_card.card_type),
-            can_charge=True,
-            created_at=new_card.created_at
-        ),
-        message=f"抽到一张【{type_name}】{level_name}级卡牌！",
+        card=_build_card_response(new_card),
+        message=f"抽到{rarity_cn}卡牌【{type_name}】{new_card.name or '未知卡牌'}！",
         draw_type=request.draw_type,
         energy_cost=ENERGY_DRAW_COST if request.draw_type == "ENERGY" else 0
     )
@@ -999,27 +1043,10 @@ def get_user_cards(user_id: int, db: Session = Depends(get_db)):
 
     card_list = []
     for c in cards:
-        remaining = c.energy_value - c.energy_consumed
-        type_name = CARD_TYPE_NAMES.get(c.card_type, "未知")
-        level_name = ENERGY_LEVELS.get(c.energy_level, {}).get("name", "未知")
-
-        # 检查是否可充值：有剩余能量 + 用户有匹配类型石头
-        can_charge = remaining > 0 and c.card_type in user_stone_types
-
-        card_list.append(CardResponse(
-            id=c.id,
-            card_type=c.card_type,
-            card_type_name=type_name,
-            mantra=c.mantra,
-            energy_level=c.energy_level,
-            energy_level_name=level_name,
-            energy_value=c.energy_value,
-            energy_consumed=c.energy_consumed,
-            remaining_energy=remaining,
-            color_code=_get_card_color_code(c.card_type),
-            can_charge=can_charge,
-            created_at=c.created_at
-        ))
+        cr = _build_card_response(c)
+        # 检查是否可充值：需要同类型石头
+        cr.can_charge = cr.remaining_energy > 0 and c.card_type in user_stone_types
+        card_list.append(cr)
 
     return CardListResponse(cards=card_list, total=len(card_list))
 
@@ -1111,6 +1138,23 @@ def gift_card(card_id: int, request: GiftCardRequest, db: Session = Depends(get_
     card.owner_id = request.to_user_id
     card.gift_from_id = from_user_id
     card.gift_status = "PENDING"
+    db.flush()  # 先flush获取更新状态
+
+    # 为接收者创建一条私信通知
+    from_user = db.query(User).filter(User.id == from_user_id).first()
+    type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+    level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+    gift_msg = Message(
+        sender_id=from_user_id,
+        receiver_id=request.to_user_id,
+        msg_type="USER_MSG",
+        msg_subtype="GIFT_CARD",
+        title=f"{from_user.nickname if from_user else '用户'} 赠送了一张卡牌",
+        content=f"【{type_name}】{level_name}级卡牌\n{card.mantra}",
+        card_id=card.id,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    db.add(gift_msg)
     db.commit()
     db.refresh(card)
 
@@ -1202,33 +1246,453 @@ def get_card_detail(card_id: int, db: Session = Depends(get_db)):
     if not card:
         raise HTTPException(status_code=404, detail="卡牌不存在")
 
-    remaining = card.energy_value - card.energy_consumed
-    type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
-    level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+    cr = _build_card_response(card)
 
     # 检查用户是否拥有匹配类型石头
-    user_stone_types = set()
     if card.owner_id:
-        user_stones = db.query(EnergyStone).filter(
+        user_stone_types = {s.stone_type for s in db.query(EnergyStone).filter(
             EnergyStone.owner_id == card.owner_id,
-            EnergyStone.status == "ALIVE"
-        ).all()
-        for stone in user_stones:
-            user_stone_types.add(stone.stone_type)
+            EnergyStone.status == "ALIVE",
+        ).all()}
+        cr.can_charge = cr.remaining_energy > 0 and card.card_type in user_stone_types
 
-    can_charge = remaining > 0 and card.card_type in user_stone_types
+    return cr
 
-    return CardResponse(
-        id=card.id,
-        card_type=card.card_type,
-        card_type_name=type_name,
-        mantra=card.mantra,
-        energy_level=card.energy_level,
-        energy_level_name=level_name,
-        energy_value=card.energy_value,
-        energy_consumed=card.energy_consumed,
-        remaining_energy=remaining,
-        color_code=_get_card_color_code(card.card_type),
-        can_charge=can_charge,
-        created_at=card.created_at
+
+# ==================== 卡牌合成 ====================
+
+@router.post("/card/synthesize", response_model=SynthesizeResponse)
+def synthesize_cards(request: SynthesizeRequest, db: Session = Depends(get_db)):
+    """v0.6.0 合成：3张同阵营同稀有度卡牌 → 1张下一稀有度卡牌。"""
+    new_card = svc_synthesize(db, request.user_id, request.card_ids)
+    if new_card is None:
+        raise HTTPException(status_code=400, detail="合成失败：需要3张同阵营同稀有度卡牌，且未达最高稀有度")
+
+    rarity_cn = RARITY_NAMES.get(new_card.rarity, "") if new_card.rarity else ""
+
+    return SynthesizeResponse(
+        success=True,
+        card=_build_card_response(new_card),
+        message=f"合成成功！获得{rarity_cn}卡牌【{new_card.name or '未知'}】",
     )
+
+
+# ==================== 卡牌收藏 ====================
+
+@router.get("/user/{user_id}/collection", response_model=CollectionResponse)
+def get_collection(user_id: int, db: Session = Depends(get_db)):
+    """获取用户卡牌收藏进度（按类型统计已收集的预设卡牌）。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    collections = []
+    for card_type in ["HEALTH", "LOVE", "WEALTH", "CAREER", "FAMILY"]:
+        total = db.query(PresetCard).filter(PresetCard.card_type == card_type).count()
+        collected = len(set(
+        c.preset_card_id for c in db.query(Card.preset_card_id).filter(
+            Card.owner_id == user_id,
+            Card.card_type == card_type,
+            Card.gift_status != "PENDING",
+        ).all()
+    ))
+        type_name = CARD_TYPE_NAMES.get(card_type, "未知")
+        collections.append(CollectionProgress(card_type=card_type, card_type_name=type_name, collected=collected, total=total))
+
+    return CollectionResponse(collections=collections)
+
+
+# ==================== 商店接口 ====================
+
+@router.get("/store/items", response_model=StoreItemListResponse)
+def get_store_items(db: Session = Depends(get_db)):
+    """获取可购买的商店物品列表。"""
+    items = db.query(StoreItem).filter(StoreItem.is_active == True).order_by(StoreItem.id).all()
+    return StoreItemListResponse(
+        items=[StoreItemResponse(id=i.id, item_type=i.item_type, name=i.name, stone_type=i.stone_type, energy_amount=i.energy_amount, price=i.price, is_active=i.is_active) for i in items]
+    )
+
+
+@router.post("/store/purchase", response_model=PurchaseResponse)
+def purchase_item(request: PurchaseRequest, db: Session = Depends(get_db)):
+    """购买商店物品（消耗能量）。"""
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    item = db.query(StoreItem).filter(StoreItem.id == request.item_id, StoreItem.is_active == True).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="物品不存在或已下架")
+
+    # 计算用户总能量
+    user_stones = db.query(EnergyStone).filter(
+        EnergyStone.owner_id == request.user_id,
+        EnergyStone.status == "ALIVE",
+    ).all()
+    total_energy = sum(s.current_energy for s in user_stones)
+
+    if total_energy < item.price:
+        raise HTTPException(status_code=400, detail=f"能量不足，需要{ item.price}点能量，当前{total_energy}点")
+
+    # 从能量最高的石头扣除
+    remaining_cost = item.price
+    stones_sorted = sorted(user_stones, key=lambda s: s.current_energy, reverse=True)
+    for stone in stones_sorted:
+        if remaining_cost <= 0:
+            break
+        deduct = min(stone.current_energy, remaining_cost)
+        stone.current_energy -= deduct
+        remaining_cost -= deduct
+
+    # 根据物品类型处理
+    if item.item_type == "STONE" and item.stone_type:
+        existing = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == request.user_id,
+            EnergyStone.stone_type == item.stone_type,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="您已拥有该类型水晶")
+        unique_code = _generate_unique_code(db, item.stone_type)
+        new_stone = EnergyStone(
+            unique_code=unique_code,
+            stone_type=item.stone_type,
+            owner_id=request.user_id,
+            current_energy=10,
+            consecutive_days=0,
+        )
+        db.add(new_stone)
+    elif item.item_type == "ENERGY_PACK":
+        if user_stones:
+            user_stones[0].current_energy = min(user_stones[0].current_energy + item.energy_amount, ENERGY_CAP)
+
+    db.commit()
+
+    new_total = sum(s.current_energy for s in db.query(EnergyStone).filter(
+        EnergyStone.owner_id == request.user_id, EnergyStone.status == "ALIVE"
+    ).all())
+
+    return PurchaseResponse(
+        success=True,
+        item_name=item.name,
+        energy_deducted=item.price,
+        user_total_energy=new_total,
+        message=f"成功购买{item.name}",
+    )
+
+
+# ==================== 消息接口 ====================
+
+@router.get("/user/{user_id}/messages", response_model=MessageListResponse)
+def get_messages(user_id: int, msg_type: str = None, db: Session = Depends(get_db)):
+    """获取用户消息列表。msg_type可选: ANNOUNCEMENT/USER_MSG/SYSTEM。"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    q = db.query(Message).filter(
+        (Message.receiver_id == user_id) | ((Message.receiver_id == None) & (Message.msg_type == "ANNOUNCEMENT"))
+    )
+    if msg_type:
+        q = q.filter(Message.msg_type == msg_type)
+    msgs = q.order_by(Message.created_at.desc()).all()
+
+    unread = db.query(Message).filter(
+        (Message.receiver_id == user_id) | ((Message.receiver_id == None) & (Message.msg_type == "ANNOUNCEMENT")),
+        Message.is_read == False,
+    ).count()
+
+    result = []
+    for m in msgs:
+        sender_nickname = None
+        if m.sender_id:
+            s = db.query(User).filter(User.id == m.sender_id).first()
+            sender_nickname = s.nickname if s else None
+
+        # 如果是卡牌赠送消息，附带卡牌信息
+        card_info = None
+        if m.msg_subtype == "GIFT_CARD" and m.card_id:
+            card = db.query(Card).filter(Card.id == m.card_id).first()
+            if card and card.gift_status == "PENDING":
+                type_name = CARD_TYPE_NAMES.get(card.card_type, "未知")
+                level_name = ENERGY_LEVELS.get(card.energy_level, {}).get("name", "未知")
+                remaining = card.energy_value - card.energy_consumed
+                from_nickname = None
+                if card.gift_from_id:
+                    from_user = db.query(User).filter(User.id == card.gift_from_id).first()
+                    from_nickname = from_user.nickname if from_user else None
+                card_info = PendingCardResponse(
+                    id=card.id, card_type=card.card_type,
+                    card_type_name=type_name, mantra=card.mantra,
+                    energy_level=card.energy_level, energy_level_name=level_name,
+                    energy_value=card.energy_value, remaining_energy=remaining,
+                    color_code=_get_card_color_code(card.card_type),
+                    from_user_id=card.gift_from_id or 0,
+                    from_user_nickname=from_nickname,
+                    created_at=card.created_at,
+                )
+
+        result.append(MessageResponse(
+            id=m.id, msg_type=m.msg_type, msg_subtype=m.msg_subtype,
+            title=m.title, content=m.content,
+            sender_id=m.sender_id, sender_nickname=sender_nickname,
+            is_read=m.is_read, created_at=m.created_at,
+            card_info=card_info,
+        ))
+
+    return MessageListResponse(messages=result, total=len(result), unread_count=unread)
+
+
+@router.post("/message/send", response_model=MessageResponse)
+def send_message(request: SendMessageRequest, db: Session = Depends(get_db)):
+    """发送用户私信。"""
+    sender = db.query(User).filter(User.id == request.sender_id).first()
+    receiver = db.query(User).filter(User.id == request.receiver_id).first()
+    if not sender or not receiver:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if request.sender_id == request.receiver_id:
+        raise HTTPException(status_code=400, detail="不能给自己发消息")
+
+    msg = Message(
+        sender_id=request.sender_id,
+        receiver_id=request.receiver_id,
+        msg_type="USER_MSG",
+        title=request.title,
+        content=request.content,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    return MessageResponse(
+        id=msg.id, msg_type=msg.msg_type, title=msg.title, content=msg.content,
+        sender_id=msg.sender_id, sender_nickname=sender.nickname,
+        is_read=False, created_at=msg.created_at,
+    )
+
+
+@router.post("/message/{message_id}/read")
+def mark_message_read(message_id: int, user_id: int, db: Session = Depends(get_db)):
+    """标记消息为已读。"""
+    msg = db.query(Message).filter(Message.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    msg.is_read = True
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/announcements")
+def get_announcements(db: Session = Depends(get_db)):
+    """获取公告列表（从广场帖子中筛选 ANNOUNCEMENT 类型）。"""
+    posts = db.query(PlazaPost).filter(
+        PlazaPost.post_type == "ANNOUNCEMENT"
+    ).order_by(PlazaPost.created_at.desc()).all()
+    return {
+        "posts": [{
+            "id": p.id, "user_id": p.user_id, "user_nickname": p.user_nickname or "平台",
+            "post_type": p.post_type, "content": p.content,
+            "pray_count": p.pray_count, "created_at": p.created_at,
+        } for p in posts],
+        "total": len(posts),
+    }
+
+
+# ==================== 广场接口 ====================
+
+@router.get("/plaza/posts", response_model=PlazaPostListResponse)
+def get_plaza_posts(
+    post_type: str = None,
+    user_id: int = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """获取广场帖子列表。post_type可选: BLESSING/WISH/ACTIVITY/ANNOUNCEMENT。"""
+    q = db.query(PlazaPost)
+    if post_type:
+        q = q.filter(PlazaPost.post_type == post_type)
+    posts = q.order_by(PlazaPost.created_at.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for p in posts:
+        user_nickname = p.user_nickname
+        if p.user_id and not user_nickname:
+            u = db.query(User).filter(User.id == p.user_id).first()
+            user_nickname = u.nickname if u else None
+        has_prayed = False
+        if user_id:
+            has_prayed = db.query(PlazaPray).filter(
+                PlazaPray.post_id == p.id, PlazaPray.user_id == user_id
+            ).first() is not None
+        # v0.7.0: compute total energy received
+        energy_sum = db.query(func.coalesce(func.sum(PlazaPray.energy_value), 0)).filter(
+            PlazaPray.post_id == p.id
+        ).scalar()
+        result.append(PlazaPostResponse(
+            id=p.id, user_id=p.user_id, user_nickname=user_nickname,
+            post_type=p.post_type, tag=p.tag,
+            total_energy_received=energy_sum or 0,
+            content=p.content,
+            pray_count=p.pray_count, has_prayed=has_prayed,
+            created_at=p.created_at,
+        ))
+
+    return PlazaPostListResponse(posts=result, total=len(result))
+
+
+@router.post("/plaza/post", response_model=PlazaPostResponse)
+def create_plaza_post(request: CreatePostRequest, db: Session = Depends(get_db)):
+    """创建祈福或许愿帖子（v0.7.0: 可选tag用于能量赠送）。"""
+    if request.post_type not in ("BLESSING", "WISH"):
+        raise HTTPException(status_code=400, detail="帖子类型无效")
+    if request.tag and request.tag not in ("HEALTH", "LOVE", "WEALTH", "CAREER", "FAMILY"):
+        raise HTTPException(status_code=400, detail="无效的能量标签")
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    post = PlazaPost(
+        user_id=request.user_id,
+        user_nickname=user.nickname,
+        post_type=request.post_type,
+        tag=request.tag,
+        content=request.content,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+
+    return PlazaPostResponse(
+        id=post.id, user_id=post.user_id, user_nickname=user.nickname,
+        post_type=post.post_type, tag=post.tag,
+        total_energy_received=0,
+        content=post.content,
+        pray_count=0, has_prayed=False, created_at=post.created_at,
+    )
+
+
+@router.post("/plaza/post/{post_id}/pray", response_model=PrayResponse)
+def pray_post(post_id: int, user_id: int, db: Session = Depends(get_db)):
+    """为广场帖子祈福（每人限1次）—— v0.7.0 保留兼容，实际逻辑已迁移至 gift_energy_to_post。"""
+    return _gift_energy(post_id, user_id, 1, db)
+
+
+@router.post("/plaza/post/{post_id}/gift", response_model=GiftEnergyResponse)
+def gift_energy_to_post(post_id: int, user_id: int, energy_value: int = 1, db: Session = Depends(get_db)):
+    """v0.7.0: 赠送能量给广场帖子。从赠送者对应tag能量石扣除，充入发帖者对应tag能量石。
+    跨维度等价兑换（如健康能量赠爱情帖子 → 健康石-1，发帖者爱情石+1）。"""
+    return _gift_energy(post_id, user_id, energy_value, db)
+
+
+def _gift_energy(post_id: int, user_id: int, energy_value: int, db: Session):
+    """核心赠送逻辑：扣除赠送者能量 → 充入发帖者能量石。"""
+    if energy_value < 1:
+        raise HTTPException(status_code=400, detail="赠送能量至少为1")
+
+    post = db.query(PlazaPost).filter(PlazaPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="帖子不存在")
+
+    if post.user_id == user_id:
+        raise HTTPException(status_code=400, detail="不能给自己的帖子赠送能量")
+
+    # 获取赠送者信息
+    giver = db.query(User).filter(User.id == user_id).first()
+    if not giver:
+        raise HTTPException(status_code=404, detail="赠送者不存在")
+
+    existing = db.query(PlazaPray).filter(
+        PlazaPray.post_id == post_id, PlazaPray.user_id == user_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="您已为该帖子赠送过能量")
+
+    # 帖子tag（发帖者想要充能的类型），默认用帖子类型或第一个
+    target_tag = post.tag
+
+    # 查找赠送者有能量的存活石（优先匹配tag，否则任意存活石）
+    from_stone = None
+    if target_tag:
+        from_stone = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == user_id,
+            EnergyStone.stone_type == target_tag,
+            EnergyStone.status == "ALIVE",
+            EnergyStone.current_energy >= energy_value,
+        ).first()
+    if not from_stone:
+        # fallback: 任意存活石且有能量
+        from_stone = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == user_id,
+            EnergyStone.status == "ALIVE",
+            EnergyStone.current_energy >= energy_value,
+        ).order_by(EnergyStone.current_energy.desc()).first()
+    if not from_stone:
+        raise HTTPException(status_code=400, detail="能量不足，无法赠送")
+
+    # 扣除赠送者能量
+    from_stone.current_energy -= energy_value
+    from_stone_id = from_stone.id
+
+    # 查找发帖者对应tag的能量石（如果帖子有tag）充入
+    to_stone_id = 0
+    if post.user_id and target_tag:
+        to_stone = db.query(EnergyStone).filter(
+            EnergyStone.owner_id == post.user_id,
+            EnergyStone.stone_type == target_tag,
+            EnergyStone.status == "ALIVE",
+        ).first()
+        if to_stone:
+            to_stone.current_energy = min(to_stone.current_energy + energy_value, ENERGY_CAP)
+            to_stone_id = to_stone.id
+
+    # 创建赠送记录
+    pray = PlazaPray(
+        post_id=post_id,
+        user_id=user_id,
+        energy_value=energy_value,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    post.pray_count += 1
+    db.add(pray)
+    db.commit()
+
+    tag_name = CARD_TYPE_NAMES.get(target_tag, "") if target_tag else ""
+    msg = f"成功赠送{energy_value}点能量" + (f"至发帖者的{tag_name}能量石" if to_stone_id else "")
+
+    return GiftEnergyResponse(
+        success=True,
+        pray_count=post.pray_count,
+        energy_gifted=energy_value,
+        from_stone_id=from_stone_id,
+        to_stone_id=to_stone_id,
+        message=msg,
+    )
+
+
+@router.get("/plaza/post/{post_id}/gifters")
+def get_post_gifters(post_id: int, db: Session = Depends(get_db)):
+    """v0.7.0: 获取帖子赠送者列表。"""
+    post = db.query(PlazaPost).filter(PlazaPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="帖子不存在")
+
+    prays = db.query(PlazaPray).filter(
+        PlazaPray.post_id == post_id
+    ).order_by(PlazaPray.created_at.desc()).all()
+
+    gifters = []
+    for p in prays:
+        nickname = None
+        u = db.query(User).filter(User.id == p.user_id).first()
+        if u:
+            nickname = u.nickname
+        gifters.append(PlazaGifterInfo(
+            user_id=p.user_id,
+            user_nickname=nickname,
+            energy_value=p.energy_value,
+            created_at=p.created_at,
+        ))
+
+    return {"gifters": [g.model_dump() for g in gifters], "total": len(gifters)}

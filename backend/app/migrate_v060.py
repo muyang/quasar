@@ -60,6 +60,9 @@ MIGRATIONS = [
     ("ALTER TABLE cards ADD COLUMN margin_left INTEGER NOT NULL DEFAULT 0", True),
     ("ALTER TABLE cards ADD COLUMN margin_bottom INTEGER NOT NULL DEFAULT 0", True),
     ("ALTER TABLE cards ADD COLUMN margin_right INTEGER NOT NULL DEFAULT 0", True),
+    # v0.7.0 广场能量赠送
+    ("ALTER TABLE plaza_posts ADD COLUMN tag TEXT", True),
+    ("ALTER TABLE plaza_prays ADD COLUMN energy_value INTEGER NOT NULL DEFAULT 1", True),
     # 新表
     (
         """CREATE TABLE IF NOT EXISTS card_archetypes (

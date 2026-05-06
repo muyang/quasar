@@ -224,7 +224,7 @@ def test_create_blessing_post():
 
 
 def test_pray_post():
-    """为帖子祈福。"""
+    """为帖子祈福（v0.7.0: 需要赠送者有能量石）。"""
     user = _create_user()
     post_resp = client.post("/api/plaza/post", json={
         "user_id": user.id, "post_type": "WISH", "content": "心想事成"
@@ -232,6 +232,7 @@ def test_pray_post():
     post_id = post_resp.json()["id"]
 
     u2 = _create_user("prayer")
+    _create_stone(u2.id, "HEALTH", 50)
     resp = client.post(f"/api/plaza/post/{post_id}/pray?user_id={u2.id}")
     assert resp.status_code == 200
     data = resp.json()
@@ -240,7 +241,7 @@ def test_pray_post():
 
 
 def test_cannot_pray_twice():
-    """同一用户不能重复祈福。"""
+    """同一用户不能重复赠送能量。"""
     user = _create_user()
     post_resp = client.post("/api/plaza/post", json={
         "user_id": user.id, "post_type": "WISH", "content": "祈祷"
@@ -248,6 +249,7 @@ def test_cannot_pray_twice():
     post_id = post_resp.json()["id"]
 
     u2 = _create_user("prayer")
+    _create_stone(u2.id, "HEALTH", 50)
     client.post(f"/api/plaza/post/{post_id}/pray?user_id={u2.id}")
     resp = client.post(f"/api/plaza/post/{post_id}/pray?user_id={u2.id}")
     assert resp.status_code == 400

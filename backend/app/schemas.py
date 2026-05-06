@@ -389,6 +389,8 @@ class PlazaPostResponse(BaseModel):
     user_id: Optional[int]
     user_nickname: Optional[str]
     post_type: str
+    tag: Optional[str] = None  # v0.7.0: HEALTH/LOVE/WEALTH/CAREER/FAMILY
+    total_energy_received: int = 0  # v0.7.0: sum of energy_value from all gifters
     content: str
     pray_count: int
     has_prayed: bool
@@ -403,11 +405,28 @@ class PlazaPostListResponse(BaseModel):
 class CreatePostRequest(BaseModel):
     user_id: int
     post_type: str  # BLESSING / WISH
+    tag: Optional[str] = None  # v0.7.0: HEALTH/LOVE/WEALTH/CAREER/FAMILY
     content: str
 
 
 class CreateActivityRequest(BaseModel):
     content: str
+
+
+class GiftEnergyResponse(BaseModel):
+    success: bool
+    pray_count: int
+    energy_gifted: int = 1
+    from_stone_id: int
+    to_stone_id: int
+    message: str
+
+
+class PlazaGifterInfo(BaseModel):
+    user_id: int
+    user_nickname: Optional[str]
+    energy_value: int
+    created_at: str
 
 
 class PrayResponse(BaseModel):
@@ -490,6 +509,7 @@ class PresetCardManageResponse(BaseModel):
     rarity: Optional[str] = None
     card_type_sub: Optional[str] = None
     cost: Optional[int] = None
+    stats_json: Optional[str] = None
     tags_json: Optional[str] = None
     # v0.7.0 layout + status
     status: str = "PENDING"
@@ -521,6 +541,11 @@ class PresetCardCreateRequest(BaseModel):
     margin_left: int = 0
     margin_bottom: int = 0
     margin_right: int = 0
+    # v0.7.0 card metadata
+    card_type_sub: Optional[str] = None
+    cost: Optional[int] = None
+    stats_json: Optional[str] = None
+    tags_json: Optional[str] = None
 
 
 class PresetCardUpdateRequest(BaseModel):
@@ -537,6 +562,11 @@ class PresetCardUpdateRequest(BaseModel):
     margin_left: Optional[int] = None
     margin_bottom: Optional[int] = None
     margin_right: Optional[int] = None
+    # v0.7.0 card metadata
+    card_type_sub: Optional[str] = None
+    cost: Optional[int] = None
+    stats_json: Optional[str] = None
+    tags_json: Optional[str] = None
 
 
 class StoreItemCreateRequest(BaseModel):

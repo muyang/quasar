@@ -174,19 +174,21 @@ class PlazaPost(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = 平台官方
     user_nickname = Column(String, nullable=True)  # denormalized for display
     post_type = Column(String, nullable=False)  # BLESSING / WISH / ACTIVITY / ANNOUNCEMENT
+    tag = Column(String, nullable=True)  # v0.7.0: HEALTH/LOVE/WEALTH/CAREER/FAMILY for energy gifting
     content = Column(String, nullable=False)
     pray_count = Column(Integer, nullable=False, default=0)
     created_at = Column(String, nullable=False)
 
 
 class PlazaPray(Base):
-    """广场祈福记录"""
+    """广场祈福/能量赠送记录"""
     __tablename__ = "plaza_prays"
     __table_args__ = (UniqueConstraint("post_id", "user_id"),)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     post_id = Column(Integer, ForeignKey("plaza_posts.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    energy_value = Column(Integer, nullable=False, default=1)  # v0.7.0: energy gifted
     created_at = Column(String, nullable=False)
 
 

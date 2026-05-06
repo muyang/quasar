@@ -12,7 +12,7 @@ ADMIN_PAGE_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>能量石 管理后台 v0.6.1</title>
+<title>能量石 管理后台 v0.7.0</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#121212; color:#e0e0e0; font-family:system-ui,-apple-system,sans-serif; min-height:100vh; }
@@ -56,19 +56,33 @@ body { background:#121212; color:#e0e0e0; font-family:system-ui,-apple-system,sa
 .form-row > label { flex:0 0 auto; min-width:28px; }
 .preview-card { border-radius:14px; position:relative; overflow:hidden; transition:border-color .3s,box-shadow .3s; }
 .preview-card-bg { position:absolute; inset:0; border-radius:12px; z-index:0; }
-.preview-card-content { position:relative; z-index:1; display:flex; flex-direction:column; height:100%; padding:10px; }
-.preview-header { display:flex; justify-content:space-between; align-items:center; }
-.preview-icon-circle { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; border:2px solid; flex-shrink:0; }
-.preview-level-circle { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; color:#fff; flex-shrink:0; }
-.preview-name-area { flex:1; text-align:center; padding:0 4px; }
-.preview-name { font-size:12px; font-weight:bold; }
-.preview-mantra-section { flex:1; margin-top:6px; border-radius:8px; padding:6px; display:flex; flex-direction:column; overflow:hidden; }
-.preview-mantra-img { width:100%; border-radius:5px; display:none; }
-.preview-mantra-text { font-style:italic; text-align:center; font-size:10px; color:rgba(255,255,255,.85); flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; line-height:1.4; padding-top:4px; }
-.preview-footer { margin-top:4px; }
-.preview-energy-row { display:flex; align-items:center; justify-content:center; gap:4px; font-size:11px; font-weight:500; margin-bottom:4px; }
+.preview-image-zone { position:relative; overflow:hidden; width:100%; flex-shrink:0; }
+.preview-image-fade-top { position:absolute; top:0; left:0; right:0; height:35%; z-index:2; pointer-events:none; background:linear-gradient(to bottom, rgba(0,0,0,0.55), transparent); }
+.preview-image-fade-bottom { position:absolute; bottom:0; left:0; right:0; height:35%; z-index:2; pointer-events:none; background:linear-gradient(to top, rgba(10,10,20,0.7), transparent); }
+.preview-overlay-rarity { position:absolute; top:10px; left:10px; z-index:3; padding:3px 8px; border-radius:4px; font-size:12px; font-weight:bold; color:#fff; border:1px solid; box-shadow:0 0 3px rgba(0,0,0,0.4); }
+.preview-overlay-level { position:absolute; top:10px; right:10px; z-index:3; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:bold; color:#fff; box-shadow:0 0 4px rgba(0,0,0,0.4); }
+.preview-overlay-type { position:absolute; bottom:10px; left:10px; z-index:3; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; border:2px solid; box-shadow:0 0 3px rgba(0,0,0,0.3); }
+.preview-overlay-cost { position:absolute; bottom:10px; right:10px; z-index:3; width:24px; height:24px; border-radius:50%; background:#6B4EFF; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; color:#fff; box-shadow:0 0 3px rgba(0,0,0,0.3); }
+.preview-info-section { flex:1; padding:10px 14px; display:flex; flex-direction:column; align-items:center; overflow:hidden; min-height:0; }
+.preview-card-name { font-size:15px; font-weight:bold; margin-bottom:3px; display:block; text-align:center; }
+.preview-subtype-row { display:flex; align-items:center; justify-content:center; gap:4px; margin-bottom:3px; font-size:12px; color:rgba(255,255,255,0.54); }
+.preview-stats-row { display:flex; gap:8px; justify-content:center; margin-bottom:3px; }
+.preview-stat-badge { padding:2px 8px; border-radius:4px; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:3px; }
+.preview-stat-badge.attack { background:rgba(244,67,54,0.35); color:#ff5252; }
+.preview-stat-badge.health { background:rgba(76,175,80,0.35); color:#69f0ae; }
+.preview-tags-row { display:flex; gap:3px; justify-content:center; margin-bottom:3px; flex-wrap:wrap; }
+.preview-tag-chip { padding:1px 5px; border-radius:3px; border:1px solid; font-size:9px; }
+.preview-divider-line { width:80%; height:1px; margin:4px 0; border:none; }
+.preview-mantra-wrapper { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; min-height:0; width:100%; }
+.preview-mantra-text { font-style:italic; text-align:center; font-size:13px; color:rgba(255,255,255,0.88); overflow:hidden; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; line-height:1.4; }
+.preview-footer { margin-top:2px; padding:0 14px 8px; }
+.preview-progress-bar { width:100%; height:3px; background:rgba(255,255,255,0.12); border-radius:2px; overflow:hidden; }
+.preview-progress-fill { height:100%; border-radius:2px; transition:width 0.3s; }
+.preview-energy-row { display:flex; align-items:center; justify-content:center; gap:4px; font-size:12px; font-weight:500; margin:4px 0; }
 .preview-btn-row { display:flex; justify-content:space-evenly; }
-.preview-btn { padding:3px 12px; border-radius:5px; border:none; color:#fff; font-size:10px; }
+.preview-btn { padding:3px 12px; border-radius:5px; border:none; color:#fff; font-size:10px; cursor:default; }
+.preview-depleted-text { font-size:10px; color:rgba(255,255,255,0.18); text-align:center; }
+.preview-ornate-divider { position:absolute; z-index:2; height:1px; border:none; left:10%; right:10%; }
 .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
 .toast { position:fixed; top:16px; right:16px; padding:12px 20px; border-radius:8px; color:#fff; z-index:200; animation:slideIn .3s; }
 .toast.success { background:#4caf50; }
@@ -342,47 +356,105 @@ function showCardModal(card) {
   const cBR=makeCorner({bottom:'3px',right:'3px',borderBottom:'1px solid',borderRight:'1px solid',borderRadius:'0 0 4px 0'});
   previewEls.corners = [cTL,cTR,cBL,cBR];
 
-  const contentDiv = h('div',{className:'preview-card-content'});
+  const ornateDivider = h('div',{className:'preview-ornate-divider'});
+  previewEls.ornateDivider = ornateDivider;
 
-  // Header
-  const headerRow = h('div',{className:'preview-header'});
-  const typeIconCircle = h('div',{className:'preview-icon-circle'});
-  const typeIconText = h('span',{});
-  typeIconCircle.appendChild(typeIconText);
-  previewEls.typeIconCircle = typeIconCircle;
-  previewEls.typeIconText = typeIconText;
+  // ===== IMAGE ZONE (38% height) =====
+  const imageZone = h('div',{className:'preview-image-zone'});
+  previewEls.imageZone = imageZone;
 
-  const nameArea = h('div',{className:'preview-name-area'});
-  const rarityBadge = h('span',{style:{display:'inline-block',padding:'0 5px',borderRadius:'3px',fontSize:'9px',fontWeight:'bold',color:'#fff',marginRight:'3px'}});
-  const nameText = h('span',{className:'preview-name'});
-  nameArea.appendChild(rarityBadge);
-  nameArea.appendChild(nameText);
-  previewEls.rarityBadge = rarityBadge;
-  previewEls.nameText = nameText;
+  const imagePlaceholder = h('div',{style:{width:'100%',height:'100%',display:'flex'}});
+  previewEls.imagePlaceholder = imagePlaceholder;
 
-  const levelCircle = h('div',{className:'preview-level-circle'});
-  const levelText = h('span',{});
-  levelCircle.appendChild(levelText);
-  previewEls.levelCircle = levelCircle;
-  previewEls.levelText = levelText;
+  const imageImg = h('img',{style:{display:'none',width:'100%',height:'100%',objectFit:'cover'}});
+  previewEls.imageImg = imageImg;
 
-  headerRow.appendChild(typeIconCircle);
-  headerRow.appendChild(nameArea);
-  headerRow.appendChild(levelCircle);
+  const fadeTop = h('div',{className:'preview-image-fade-top'});
+  const fadeBottom = h('div',{className:'preview-image-fade-bottom'});
 
-  // Mantra section
-  const mantraSection = h('div',{className:'preview-mantra-section',
-    style:{background:'rgba(0,0,0,.3)',border:'1px solid rgba(255,255,255,.08)'}});
-  const mantraImg = h('img',{className:'preview-mantra-img'});
-  const mantraTextEl = h('div',{className:'preview-mantra-text'});
-  mantraSection.appendChild(mantraImg);
-  mantraSection.appendChild(mantraTextEl);
-  previewEls.mantraSection = mantraSection;
-  previewEls.mantraImg = mantraImg;
-  previewEls.mantraText = mantraTextEl;
+  const rarityOverlay = h('div',{className:'preview-overlay-rarity'});
+  const rarityOverlayText = h('span',{});
+  rarityOverlay.appendChild(rarityOverlayText);
+  previewEls.rarityOverlay = rarityOverlay;
+  previewEls.rarityOverlayText = rarityOverlayText;
 
-  // Footer
+  const levelOverlay = h('div',{className:'preview-overlay-level'});
+  const levelOverlayText = h('span',{});
+  levelOverlay.appendChild(levelOverlayText);
+  previewEls.levelOverlay = levelOverlay;
+  previewEls.levelOverlayText = levelOverlayText;
+
+  const typeOverlay = h('div',{className:'preview-overlay-type'});
+  const typeOverlayIcon = h('span',{});
+  typeOverlay.appendChild(typeOverlayIcon);
+  previewEls.typeOverlay = typeOverlay;
+  previewEls.typeOverlayIcon = typeOverlayIcon;
+
+  const costOverlay = h('div',{className:'preview-overlay-cost'});
+  const costOverlayText = h('span',{});
+  costOverlay.appendChild(costOverlayText);
+  previewEls.costOverlay = costOverlay;
+  previewEls.costOverlayText = costOverlayText;
+
+  imageZone.appendChild(imagePlaceholder);
+  imageZone.appendChild(imageImg);
+  imageZone.appendChild(fadeTop);
+  imageZone.appendChild(fadeBottom);
+  imageZone.appendChild(rarityOverlay);
+  imageZone.appendChild(levelOverlay);
+  imageZone.appendChild(typeOverlay);
+  imageZone.appendChild(costOverlay);
+
+  // ===== INFO SECTION =====
+  const infoSection = h('div',{className:'preview-info-section'});
+
+  const cardNameEl = h('span',{className:'preview-card-name'});
+  previewEls.cardNameEl = cardNameEl;
+
+  const subtypeRow = h('div',{className:'preview-subtype-row',style:{display:'none'}});
+  const subtypeIcon = h('span',{});
+  const subtypeLabel = h('span',{});
+  subtypeRow.appendChild(subtypeIcon);
+  subtypeRow.appendChild(subtypeLabel);
+  previewEls.subtypeRow = subtypeRow;
+  previewEls.subtypeLabel = subtypeLabel;
+
+  const statsRow = h('div',{className:'preview-stats-row',style:{display:'none'}});
+  const attackBadge = h('span',{className:'preview-stat-badge attack'});
+  const healthBadge = h('span',{className:'preview-stat-badge health'});
+  statsRow.appendChild(attackBadge);
+  statsRow.appendChild(healthBadge);
+  previewEls.statsRow = statsRow;
+  previewEls.attackBadge = attackBadge;
+  previewEls.healthBadge = healthBadge;
+
+  const tagsRow = h('div',{className:'preview-tags-row',style:{display:'none'}});
+  previewEls.tagsRow = tagsRow;
+
+  const dividerLine = h('div',{className:'preview-divider-line'});
+  previewEls.dividerLine = dividerLine;
+
+  const mantraWrapper = h('div',{className:'preview-mantra-wrapper'});
+  const mantraTextEl = h('span',{className:'preview-mantra-text'});
+  mantraWrapper.appendChild(mantraTextEl);
+  previewEls.mantraTextEl = mantraTextEl;
+
+  infoSection.appendChild(cardNameEl);
+  infoSection.appendChild(subtypeRow);
+  infoSection.appendChild(statsRow);
+  infoSection.appendChild(tagsRow);
+  infoSection.appendChild(dividerLine);
+  infoSection.appendChild(mantraWrapper);
+
+  // ===== FOOTER =====
   const footerDiv = h('div',{className:'preview-footer'});
+
+  const progressBar = h('div',{className:'preview-progress-bar'});
+  const progressFill = h('div',{className:'preview-progress-fill'});
+  progressBar.appendChild(progressFill);
+  previewEls.progressBar = progressBar;
+  previewEls.progressFill = progressFill;
+
   const energyRow = h('div',{className:'preview-energy-row'});
   const energyLabel = h('span',{});
   energyRow.appendChild(h('span',{},'\u26A1'));
@@ -396,25 +468,42 @@ function showCardModal(card) {
   previewEls.giftBtn   = giftBtn;
   btnRow.appendChild(chargeBtn);
   btnRow.appendChild(giftBtn);
+
+  const depletedTextEl = h('div',{className:'preview-depleted-text',style:{display:'none'}}, '\u80FD\u91CF\u8017\u5C3D');
+  previewEls.depletedTextEl = depletedTextEl;
+
+  footerDiv.appendChild(progressBar);
   footerDiv.appendChild(energyRow);
   footerDiv.appendChild(btnRow);
+  footerDiv.appendChild(depletedTextEl);
 
-  // Assemble content
-  contentDiv.appendChild(headerRow);
-  contentDiv.appendChild(mantraSection);
-  contentDiv.appendChild(footerDiv);
+  // ===== ASSEMBLE CARD (column layout) =====
+  const cardColumn = h('div',{style:{display:'flex',flexDirection:'column',height:'100%',position:'relative',zIndex:'1'}});
+  cardColumn.appendChild(imageZone);
+  cardColumn.appendChild(infoSection);
+  cardColumn.appendChild(footerDiv);
 
-  // Assemble card
   previewCard.appendChild(bgLayer);
+  previewCard.appendChild(ornateDivider);
   previewCard.appendChild(cTL);
   previewCard.appendChild(cTR);
   previewCard.appendChild(cBL);
   previewCard.appendChild(cBR);
-  previewCard.appendChild(contentDiv);
+  previewCard.appendChild(cardColumn);
 
   const previewOuter = h('div',{style:{display:'flex',justifyContent:'center',padding:'4px 0'}}, previewCard);
 
-  // ====== updatePreview (full card mockup) ======
+  // ====== New form fields (v0.6.0 metadata) ======
+  const cardTypeSubToggle = h('select',{},
+    h('option',{value:''},'无子类型'),
+    ...Object.entries(TYPE_NAMES).map(([k,v])=>h('option',{value:k},v))
+  );
+  const costInput = h('input',{type:'number',placeholder:'费用',value:'0',style:{width:'80px'}});
+  const attackInput = h('input',{type:'number',placeholder:'攻击',value:'0',style:{width:'80px'}});
+  const healthInput = h('input',{type:'number',placeholder:'生命',value:'0',style:{width:'80px'}});
+  const tagsInput = h('input',{placeholder:'标签（逗号分隔）'});
+
+  // ====== updatePreview (v0.7.0 - matches Flutter CardWidget) ======
   function updatePreview() {
     const el = previewEls;
     const t = type.value || 'HEALTH';
@@ -429,13 +518,31 @@ function showCardModal(card) {
     const rarityName = RARITY_NAMES[rk] || '';
     const rarityCol = RARITY_COLORS_MAP[rk] || '#888';
 
+    // Energy value per level (max of range)
+    const lvEnergy = {1:4,2:8,3:16,4:32,5:64};
+    const energyVal = lvEnergy[lv] || 4;
+    const remaining = energyVal;
+
+    // Subtype / cost / stats / tags
+    const subtype = cardTypeSubToggle.value || '';
+    const subtypeName = TYPE_NAMES[subtype] || '';
+    const costVal = parseInt(costInput.value) || 0;
+    const atkVal = parseInt(attackInput.value) || 0;
+    const hpVal = parseInt(healthInput.value) || 0;
+    const tagsStr = tagsInput.value || '';
+    const tagsArr = tagsStr.split(',').map(function(s){return s.trim();}).filter(Boolean);
+
     // Scale card
     const cw = parseInt(cardWidth.value) || 280;
     const ch = parseInt(cardHeight.value) || 400;
     const maxW = 280, maxH = 500;
     const scale = Math.min(maxW / cw, maxH / ch);
-    el.card.style.width  = Math.round(cw * scale) + 'px';
-    el.card.style.height = Math.round(ch * scale) + 'px';
+    const displayW = Math.round(cw * scale);
+    const displayH = Math.round(ch * scale);
+    const zoneH = Math.round(displayH * 0.38);
+
+    el.card.style.width  = displayW + 'px';
+    el.card.style.height = displayH + 'px';
 
     // Background
     el.bg.style.background = 'linear-gradient(135deg, ' + col.rgba + ', #1A1A2E 50%, #0A0A14)';
@@ -447,23 +554,13 @@ function showCardModal(card) {
     // Corner decorations
     el.corners.forEach(function(c) { c.style.borderColor = col.hex; });
 
-    // Header: type icon circle
-    el.typeIconCircle.style.background = col.rgba;
-    el.typeIconCircle.style.borderColor = col.hex;
-    el.typeIconText.textContent = icon;
+    // Ornate divider at 38%
+    el.ornateDivider.style.top = zoneH + 'px';
+    el.ornateDivider.style.borderTop = '1px solid ' + col.hex;
+    el.ornateDivider.style.opacity = '0.3';
 
-    // Header: rarity badge + name
-    el.rarityBadge.textContent = rarityName;
-    el.rarityBadge.style.background = rarityCol;
-    el.nameText.textContent = typeName;
-    el.nameText.style.color = col.hex;
-
-    // Header: level circle
-    el.levelText.textContent = lv;
-    el.levelCircle.style.background = 'radial-gradient(circle, ' + col.hex + ', ' + col.rgba + ')';
-
-    // Mantra section border
-    el.mantraSection.style.borderColor = col.rgba;
+    // Image zone height
+    el.imageZone.style.height = zoneH + 'px';
 
     // Image
     var src = imageUrl.value || '';
@@ -471,28 +568,110 @@ function showCardModal(card) {
       src = URL.createObjectURL(fileInput.files[0]);
     }
     if (src) {
-      el.mantraImg.src = src;
-      el.mantraImg.style.display = 'block';
-      el.mantraImg.style.objectFit = (imageFit.value || 'COVER').toLowerCase();
+      el.imageImg.src = src;
+      el.imageImg.style.display = 'block';
+      el.imagePlaceholder.style.display = 'none';
     } else {
-      el.mantraImg.style.display = 'none';
+      el.imageImg.style.display = 'none';
+      el.imagePlaceholder.style.display = 'flex';
+      el.imagePlaceholder.style.background = 'linear-gradient(to bottom, ' + col.rgba + ', rgba(10,10,20,0.3), #1A1A2E)';
     }
 
-    // Image margins (scaled)
-    var mt = parseInt(marginTop.value)||0, ml = parseInt(marginLeft.value)||0;
-    var mb = parseInt(marginBottom.value)||0, mr = parseInt(marginRight.value)||0;
-    el.mantraImg.style.marginTop    = Math.round(mt * scale) + 'px';
-    el.mantraImg.style.marginLeft   = Math.round(ml * scale) + 'px';
-    el.mantraImg.style.marginBottom = Math.round(mb * scale) + 'px';
-    el.mantraImg.style.marginRight  = Math.round(mr * scale) + 'px';
+    // === 4 Overlay badges ===
+
+    // Rarity (top-left)
+    el.rarityOverlayText.textContent = rarityName;
+    el.rarityOverlay.style.background = rarityCol;
+    el.rarityOverlay.style.borderColor = rarityCol;
+
+    // Level (top-right)
+    el.levelOverlayText.textContent = lv;
+    el.levelOverlay.style.background = 'radial-gradient(circle, ' + col.hex + ', ' + col.rgba + ')';
+
+    // Type icon (bottom-left)
+    el.typeOverlayIcon.textContent = icon;
+    el.typeOverlay.style.background = col.rgba;
+    el.typeOverlay.style.borderColor = col.hex;
+    el.typeOverlay.style.color = col.hex;
+
+    // Cost (bottom-right)
+    if (costVal > 0) {
+      el.costOverlayText.textContent = costVal;
+      el.costOverlay.style.display = 'flex';
+    } else {
+      el.costOverlay.style.display = 'none';
+    }
+
+    // === Info Section ===
+
+    // Card name
+    el.cardNameEl.textContent = (editingCard && editingCard.name) || typeName;
+    el.cardNameEl.style.color = col.hex;
+
+    // Subtype row
+    var subtypeIcons = {UNIT:'\u26E8',SPELL:'\u2728',ITEM:'\uD83C\uDF92',RELIC:'\uD83D\uDC8E'};
+    if (subtypeName) {
+      el.subtypeRow.style.display = 'flex';
+      el.subtypeRow.querySelector('span').textContent = (subtypeIcons[subtype] || '\u25CF');
+      el.subtypeLabel.textContent = subtypeName;
+    } else {
+      el.subtypeRow.style.display = 'none';
+    }
+
+    // Stats row
+    if (atkVal > 0 || hpVal > 0) {
+      el.statsRow.style.display = 'flex';
+      el.attackBadge.innerHTML = '\u2694 ' + atkVal;
+      el.healthBadge.innerHTML = '\u2764 ' + hpVal;
+    } else {
+      el.statsRow.style.display = 'none';
+    }
+
+    // Tags row
+    el.tagsRow.innerHTML = '';
+    if (tagsArr.length > 0) {
+      el.tagsRow.style.display = 'flex';
+      tagsArr.slice(0,3).forEach(function(tag){
+        var chip = document.createElement('span');
+        chip.className = 'preview-tag-chip';
+        chip.textContent = tag;
+        chip.style.color = col.hex;
+        chip.style.borderColor = col.hex;
+        chip.style.background = col.rgba;
+        el.tagsRow.appendChild(chip);
+      });
+    } else {
+      el.tagsRow.style.display = 'none';
+    }
+
+    // Divider
+    el.dividerLine.style.background = col.hex;
+    el.dividerLine.style.opacity = '0.15';
 
     // Mantra text
-    el.mantraText.textContent = mantra.value || '(\u8F93\u5165\u5492\u8BED...)';
+    el.mantraTextEl.textContent = mantra.value || '(\u8F93\u5165\u5492\u8BED...)';
 
-    // Footer: energy + buttons
-    el.energyLabel.textContent = '\u80FD\u91CF: ' + lv + '/' + lv;
-    el.energyLabel.style.color = col.hex;
+    // === Footer ===
+    var depleted = false;
+    var progress = depleted ? 0 : 1;
+
+    el.progressFill.style.width = (progress * 100) + '%';
+    el.progressFill.style.background = depleted ? 'rgba(255,255,255,0.24)' : col.hex;
+
+    el.energyLabel.textContent = '\u80FD\u91CF: ' + remaining + '/' + energyVal;
+    el.energyLabel.style.color = depleted ? 'rgba(255,255,255,0.38)' : col.hex;
+
     el.chargeBtn.style.background = col.hex;
+
+    if (depleted) {
+      el.chargeBtn.style.display = 'none';
+      el.giftBtn.style.display = 'none';
+      el.depletedTextEl.style.display = 'block';
+    } else {
+      el.chargeBtn.style.display = '';
+      el.giftBtn.style.display = '';
+      el.depletedTextEl.style.display = 'none';
+    }
   }
 
   // Bindings
@@ -501,6 +680,11 @@ function showCardModal(card) {
   level.onchange = updatePreview;
   [cardWidth,cardHeight,marginTop,marginLeft,marginBottom,marginRight].forEach(function(el){el.oninput=updatePreview;});
   imageFit.onchange = updatePreview;
+  cardTypeSubToggle.onchange = updatePreview;
+  costInput.oninput = updatePreview;
+  attackInput.oninput = updatePreview;
+  healthInput.oninput = updatePreview;
+  tagsInput.oninput = updatePreview;
 
   // Populate fields if editing
   if (card) {
@@ -516,6 +700,21 @@ function showCardModal(card) {
     marginLeft.value = card.margin_left||0;
     marginBottom.value = card.margin_bottom||0;
     marginRight.value = card.margin_right||0;
+    if (card.card_type_sub) cardTypeSubToggle.value = card.card_type_sub;
+    if (card.cost) costInput.value = card.cost;
+    if (card.stats_json) {
+      try {
+        var s = JSON.parse(card.stats_json);
+        if (s.attack) attackInput.value = s.attack;
+        if (s.health) healthInput.value = s.health;
+      } catch(e) {}
+    }
+    if (card.tags_json) {
+      try {
+        var tags = JSON.parse(card.tags_json);
+        if (Array.isArray(tags)) tagsInput.value = tags.join(', ');
+      } catch(e) {}
+    }
   }
 
   setTimeout(updatePreview, 100);
@@ -531,6 +730,15 @@ function showCardModal(card) {
         h('label',{style:{flex:'0 0 auto'}}, '\u7B49\u7EA7'), level,
       ),
       h('label',{},'\u5492\u8BED'), mantra,
+
+      sectionTitle('\u5361\u724C\u5C5E\u6027 (v0.6.0)'),
+      h('label',{},'\u5B50\u7C7B\u578B'), cardTypeSubToggle,
+      h('div',{className:'form-row'},
+        h('label',{style:{flex:'0 0 auto'}}, '\u8D39\u7528'), costInput,
+        h('label',{style:{flex:'0 0 auto'}}, '\u653B\u51FB'), attackInput,
+        h('label',{style:{flex:'0 0 auto'}}, '\u751F\u547D'), healthInput,
+      ),
+      h('label',{},'\u6807\u7B7E'), tagsInput,
 
       sectionTitle('\u53D1\u884C\u72B6\u6001'),
       h('label',{},'\u72B6\u6001'), statusToggle,
@@ -562,6 +770,17 @@ function showCardModal(card) {
   );
 
   showModal(card?'\u7F16\u8F91\u5361\u724C':'\u65B0\u589E\u5361\u724C', content, async function(){
+    var statsJson = null;
+    var atkVal2 = parseInt(attackInput.value) || 0;
+    var hpVal2 = parseInt(healthInput.value) || 0;
+    if (atkVal2 > 0 || hpVal2 > 0) {
+      statsJson = JSON.stringify({attack:atkVal2, health:hpVal2});
+    }
+    var tagsJson = null;
+    var tagsStr2 = tagsInput.value || '';
+    var tagsArr2 = tagsStr2.split(',').map(function(s){return s.trim();}).filter(Boolean);
+    if (tagsArr2.length > 0) tagsJson = JSON.stringify(tagsArr2);
+
     const payload = {
       card_type:type.value, mantra:mantra.value, energy_level:parseInt(level.value),
       image_url:imageUrl.value||null, status:statusToggle.value,
@@ -569,6 +788,8 @@ function showCardModal(card) {
       image_fit:imageFit.value,
       margin_top:parseInt(marginTop.value)||0, margin_left:parseInt(marginLeft.value)||0,
       margin_bottom:parseInt(marginBottom.value)||0, margin_right:parseInt(marginRight.value)||0,
+      card_type_sub:cardTypeSubToggle.value||null, cost:parseInt(costInput.value)||null,
+      stats_json:statsJson, tags_json:tagsJson,
     };
     if (card) { await api('PUT','/api/admin/preset-cards/'+card.id, payload); }
     else { await api('POST','/api/admin/preset-cards', payload); }

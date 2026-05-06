@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 enum StoneType {
   health,
   love,
@@ -806,6 +808,8 @@ class PlazaPost {
   final int? userId;
   final String? userNickname;
   final String postType;
+  final String? tag;
+  final int totalEnergyReceived;
   final String content;
   final int prayCount;
   final bool hasPrayed;
@@ -813,7 +817,8 @@ class PlazaPost {
 
   PlazaPost({
     required this.id, this.userId, this.userNickname,
-    required this.postType, required this.content,
+    required this.postType, this.tag, this.totalEnergyReceived = 0,
+    required this.content,
     required this.prayCount, required this.hasPrayed,
     required this.createdAt,
   });
@@ -824,6 +829,8 @@ class PlazaPost {
       userId: json['user_id'] as int?,
       userNickname: json['user_nickname'] as String?,
       postType: json['post_type'] as String,
+      tag: json['tag'] as String?,
+      totalEnergyReceived: json['total_energy_received'] as int? ?? 0,
       content: json['content'] as String,
       prayCount: json['pray_count'] as int? ?? 0,
       hasPrayed: json['has_prayed'] as bool? ?? false,
@@ -839,6 +846,46 @@ class PlazaPost {
       case 'ACTIVITY': return '活动';
       default: return postType;
     }
+  }
+
+  String get tagLabel {
+    switch (tag) {
+      case 'HEALTH': return '健康';
+      case 'LOVE': return '爱情';
+      case 'WEALTH': return '财富';
+      case 'CAREER': return '事业';
+      case 'FAMILY': return '家庭';
+      default: return '';
+    }
+  }
+
+  Color get tagColor {
+    switch (tag) {
+      case 'HEALTH': return const Color(0xFF4CAF50);
+      case 'LOVE': return const Color(0xFFE91E63);
+      case 'WEALTH': return const Color(0xFFFFD700);
+      case 'CAREER': return const Color(0xFFF44336);
+      case 'FAMILY': return const Color(0xFF2196F3);
+      default: return const Color(0xFF888888);
+    }
+  }
+}
+
+class PlazaGifter {
+  final int userId;
+  final String? userNickname;
+  final int energyValue;
+  final String createdAt;
+
+  PlazaGifter({required this.userId, this.userNickname, required this.energyValue, required this.createdAt});
+
+  factory PlazaGifter.fromJson(Map<String, dynamic> json) {
+    return PlazaGifter(
+      userId: json['user_id'] as int,
+      userNickname: json['user_nickname'] as String?,
+      energyValue: json['energy_value'] as int? ?? 1,
+      createdAt: json['created_at'] as String,
+    );
   }
 }
 
