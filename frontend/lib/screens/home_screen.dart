@@ -9,6 +9,8 @@ import 'calendar_screen.dart';
 import 'stone_detail_screen.dart';
 import 'cards_screen.dart';
 import 'settings_screen.dart';
+import 'plaza_screen.dart';
+import 'message_screen.dart';
 import 'draw_card_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -270,6 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildStonesPage(),
               CardsScreen(userId: widget.userId, stones: _stones, onRefresh: _refreshData),
+              PlazaScreen(userId: widget.userId),
               SettingsScreen(userId: widget.userId, onRefresh: _refreshData),
             ],
           ),
@@ -307,6 +310,16 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF1A1A2E),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mail_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => MessageScreen(userId: widget.userId)),
+              );
+            },
+            tooltip: '消息',
+          ),
           // 视图切换按钮
           IconButton(
             icon: Icon(_isStoneCardView ? Icons.list : Icons.view_carousel),
@@ -769,6 +782,7 @@ class _HomeScreenState extends State<HomeScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.diamond), label: '水晶'),
           BottomNavigationBarItem(icon: Icon(Icons.style), label: '卡牌'),
+          BottomNavigationBarItem(icon: Icon(Icons.public), label: '广场'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
         ],
       ),

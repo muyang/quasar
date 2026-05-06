@@ -5,8 +5,8 @@ import '../models/stone.dart';
 
 class ApiService {
   // 动态baseUrl，启动时从SharedPreferences加载
-  static String baseUrl = 'http://192.168.1.78:8000/api';
-  static const String _defaultBaseUrl = 'http://192.168.1.78:8000/api';
+  static String baseUrl = 'http://192.168.0.109:8002/api';
+  static const String _defaultBaseUrl = 'http://192.168.0.109:8002/api';
 
   /// 初始化baseUrl，从SharedPreferences加载保存的地址
   static Future<void> initBaseUrl() async {
@@ -19,6 +19,7 @@ class ApiService {
       baseUrl = _defaultBaseUrl;
       print('[API] 使用默认服务器地址: $baseUrl');
     }
+    setImageBaseUrl(currentServerUrl);
   }
 
   /// 保存新的baseUrl到SharedPreferences
@@ -30,6 +31,7 @@ class ApiService {
     }
     await prefs.setString('server_url', url);
     baseUrl = url;
+    setImageBaseUrl(currentServerUrl);
     print('[API] 保存服务器地址: $baseUrl');
   }
 
@@ -549,6 +551,369 @@ class ApiService {
       }
     } catch (e) {
       print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 合成接口 ====================
+
+  Future<SynthesizeResponse> synthesizeCards(int userId, List<int> cardIds) async {
+    final url = Uri.parse('$baseUrl/card/synthesize');
+    print('[API] 合成卡牌: $url, userId: $userId, cardIds: $cardIds');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'card_ids': cardIds}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 合成成功: ${data}');
+        return SynthesizeResponse.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '合成失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 收藏接口 ====================
+
+  Future<List<CollectionProgress>> getCollection(int userId) async {
+    final url = Uri.parse('$baseUrl/user/$userId/collection');
+    print('[API] 获取收藏进度: $url');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['collections'] as List;
+        return list.map((c) => CollectionProgress.fromJson(c)).toList();
+      } else {
+        throw Exception('获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 商店接口 ====================
+
+  Future<List<StoreItem>> getStoreItems() async {
+    final url = Uri.parse('$baseUrl/store/items');
+    print('[API] 获取商店物品: $url');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['items'] as List;
+        return list.map((i) => StoreItem.fromJson(i)).toList();
+      } else {
+        throw Exception('获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<PurchaseResponse> purchaseItem(int userId, int itemId) async {
+    final url = Uri.parse('$baseUrl/store/purchase');
+    print('[API] 购买物品: $url, userId: $userId, itemId: $itemId');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'item_id': itemId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[API] 购买成功: ${data}');
+        return PurchaseResponse.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '购买失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 消息接口 ====================
+
+  Future<MessageListResponse> getMessages(int userId, {String? msgType}) async {
+    var url = '$baseUrl/user/$userId/messages';
+    if (msgType != null) url += '?msg_type=$msgType';
+    print('[API] 获取消息: $url');
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return MessageListResponse.fromJson(data);
+      } else {
+        throw Exception('获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<AppMessage> sendMessage(int senderId, int receiverId, String title, String content) async {
+    final url = Uri.parse('$baseUrl/message/send');
+    print('[API] 发送消息: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'sender_id': senderId, 'receiver_id': receiverId,
+          'title': title, 'content': content,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return AppMessage.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '发送失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<void> markMessageRead(int messageId, int userId) async {
+    final url = Uri.parse('$baseUrl/message/$messageId/read?user_id=$userId');
+    print('[API] 标记已读: $url');
+    await http.post(url);
+  }
+
+  Future<MessageListResponse> getAnnouncements() async {
+    final url = Uri.parse('$baseUrl/announcements');
+    print('[API] 获取公告: $url');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return MessageListResponse.fromJson(data);
+      } else {
+        throw Exception('获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 广场接口 ====================
+
+  Future<List<PlazaPost>> getPlazaPosts({String? postType, int? userId, int skip = 0}) async {
+    var url = '$baseUrl/plaza/posts?skip=$skip&limit=50';
+    if (postType != null) url += '&post_type=$postType';
+    if (userId != null) url += '&user_id=$userId';
+    print('[API] 获取广场帖子: $url');
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['posts'] as List;
+        return list.map((p) => PlazaPost.fromJson(p)).toList();
+      } else {
+        throw Exception('获取失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<PlazaPost> createPlazaPost(int userId, String postType, String content) async {
+    final url = Uri.parse('$baseUrl/plaza/post');
+    print('[API] 创建广场帖子: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'post_type': postType, 'content': content}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return PlazaPost.fromJson(data);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '发布失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> prayPost(int postId, int userId) async {
+    final url = Uri.parse('$baseUrl/plaza/post/$postId/pray?user_id=$userId');
+    print('[API] 祈福: $url');
+
+    try {
+      final response = await http.post(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['detail'] ?? '祈福失败');
+      }
+    } catch (e) {
+      print('[API] 请求异常: $e');
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  // ==================== v0.5.0 管理员接口 ====================
+
+  static const String _adminToken = 'quasar-admin-2024';
+
+  Future<bool> adminLogin(String token) async {
+    final url = Uri.parse('$baseUrl/admin/login');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'admin_token': token}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<List<PresetCardManage>> adminGetPresetCards({String? cardType}) async {
+    var urlStr = '$baseUrl/admin/preset-cards';
+    if (cardType != null) urlStr += '?card_type=$cardType';
+    try {
+      final response = await http.get(Uri.parse(urlStr), headers: {'X-Admin-Token': _adminToken});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['cards'] as List;
+        return list.map((c) => PresetCardManage.fromJson(c)).toList();
+      }
+      throw Exception('获取失败');
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<PresetCardManage> adminCreatePresetCard(String cardType, String mantra, int energyLevel) async {
+    final url = Uri.parse('$baseUrl/admin/preset-cards');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'X-Admin-Token': _adminToken},
+        body: jsonEncode({'card_type': cardType, 'mantra': mantra, 'energy_level': energyLevel}),
+      );
+      if (response.statusCode == 200) {
+        return PresetCardManage.fromJson(jsonDecode(response.body));
+      }
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? '创建失败');
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<void> adminDeletePresetCard(int cardId) async {
+    final url = Uri.parse('$baseUrl/admin/preset-cards/$cardId');
+    try {
+      await http.delete(url, headers: {'X-Admin-Token': _adminToken});
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<List<StoreItem>> adminGetStoreItems() async {
+    final url = Uri.parse('$baseUrl/admin/store-items');
+    try {
+      final response = await http.get(url, headers: {'X-Admin-Token': _adminToken});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['items'] as List;
+        return list.map((i) => StoreItem.fromJson(i)).toList();
+      }
+      throw Exception('获取失败');
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<StoreItem> adminCreateStoreItem(String itemType, String name, {String? stoneType, int energyAmount = 0, int price = 0}) async {
+    final url = Uri.parse('$baseUrl/admin/store-items');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'X-Admin-Token': _adminToken},
+        body: jsonEncode({
+          'item_type': itemType, 'name': name,
+          'stone_type': stoneType, 'energy_amount': energyAmount, 'price': price,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return StoreItem.fromJson(jsonDecode(response.body));
+      }
+      final error = jsonDecode(response.body);
+      throw Exception(error['detail'] ?? '创建失败');
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<void> adminDeleteStoreItem(int itemId) async {
+    final url = Uri.parse('$baseUrl/admin/store-items/$itemId');
+    try {
+      await http.delete(url, headers: {'X-Admin-Token': _adminToken});
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<void> adminSendAnnouncement(String title, String content) async {
+    final url = Uri.parse('$baseUrl/admin/announcements');
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'X-Admin-Token': _adminToken},
+        body: jsonEncode({'title': title, 'content': content}),
+      );
+    } catch (e) {
+      throw Exception('网络请求失败: $e');
+    }
+  }
+
+  Future<void> adminCreateActivity(String content) async {
+    final url = Uri.parse('$baseUrl/admin/activities');
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'X-Admin-Token': _adminToken},
+        body: jsonEncode({'content': content}),
+      );
+    } catch (e) {
       throw Exception('网络请求失败: $e');
     }
   }

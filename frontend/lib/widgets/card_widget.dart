@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/stone.dart';
 
 /// 卡牌视觉组件 - 英伦古典质感设计
 class CardWidget extends StatefulWidget {
@@ -14,6 +15,22 @@ class CardWidget extends StatefulWidget {
   final VoidCallback? onCharge;
   final VoidCallback? onGift;
   final bool showActions;
+  final String? imageUrl;
+  final String? rarity;
+  final String? rarityName;
+  final String? cardTypeSubName;
+  final int? cost;
+  final int? attack;
+  final int? health;
+  final List<String>? tags;
+  final String? name;
+  final int? cardWidth;
+  final int? cardHeight;
+  final String? imageFit;
+  final int marginTop;
+  final int marginLeft;
+  final int marginBottom;
+  final int marginRight;
 
   const CardWidget({
     super.key,
@@ -29,9 +46,24 @@ class CardWidget extends StatefulWidget {
     this.onCharge,
     this.onGift,
     this.showActions = true,
+    this.imageUrl,
+    this.rarity,
+    this.rarityName,
+    this.cardTypeSubName,
+    this.cost,
+    this.attack,
+    this.health,
+    this.tags,
+    this.name,
+    this.cardWidth,
+    this.cardHeight,
+    this.imageFit,
+    this.marginTop = 0,
+    this.marginLeft = 0,
+    this.marginBottom = 0,
+    this.marginRight = 0,
   });
 
-  /// 获取类型图标
   IconData _getTypeIcon() {
     switch (cardType) {
       case 'HEALTH':
@@ -46,6 +78,21 @@ class CardWidget extends StatefulWidget {
         return Icons.home_rounded;
       default:
         return Icons.auto_awesome_rounded;
+    }
+  }
+
+  IconData _getTypeSubIcon() {
+    switch (cardTypeSubName) {
+      case '单位':
+        return Icons.shield_rounded;
+      case '法术':
+        return Icons.auto_awesome_rounded;
+      case '装备':
+        return Icons.inventory_2_rounded;
+      case '遗物':
+        return Icons.diamond_rounded;
+      default:
+        return Icons.circle_rounded;
     }
   }
 
@@ -77,14 +124,32 @@ class _CardWidgetState extends State<CardWidget>
     super.dispose();
   }
 
+  BoxFit _parseImageFit() {
+    switch (widget.imageFit) {
+      case 'CONTAIN':
+        return BoxFit.contain;
+      case 'FILL':
+        return BoxFit.fill;
+      case 'FIT_WIDTH':
+        return BoxFit.fitWidth;
+      case 'FIT_HEIGHT':
+        return BoxFit.fitHeight;
+      case 'NONE':
+        return BoxFit.none;
+      case 'COVER':
+      default:
+        return BoxFit.cover;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _glowAnimation,
       builder: (context, child) {
         return Container(
-          width: 280,
-          height: 400,
+          width: (widget.cardWidth ?? 280).toDouble(),
+          height: (widget.cardHeight ?? 400).toDouble(),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
@@ -99,36 +164,27 @@ class _CardWidgetState extends State<CardWidget>
               ),
             ],
           ),
-          child: Stack(
-            children: [
-              // 背景渐变
-              _buildBackground(),
-              // 古典边框装饰
-              _buildOrnateBorder(),
-              // 内容
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              children: [
+                _buildBackground(),
+                _buildOrnateBorder(),
+                Column(
                   children: [
-                    // 顶部：类型图标和等级
-                    _buildHeader(),
-                    const SizedBox(height: 24),
-                    // 中部：咒语
-                    Expanded(child: _buildMantraSection()),
-                    const SizedBox(height: 24),
-                    // 底部：能量和操作
+                    _buildImageZone(),
+                    Expanded(child: _buildInfoSection()),
                     if (widget.showActions) _buildFooter(),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  /// 背景渐变
   Widget _buildBackground() {
     return Positioned.fill(
       child: Container(
@@ -149,7 +205,6 @@ class _CardWidgetState extends State<CardWidget>
     );
   }
 
-  /// 古典边框装饰
   Widget _buildOrnateBorder() {
     return Positioned.fill(
       child: CustomPaint(
@@ -158,161 +213,356 @@ class _CardWidgetState extends State<CardWidget>
     );
   }
 
-  /// 顶部头部
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // 类型图标
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.color.withOpacity(0.3),
-            border: Border.all(color: widget.color.withOpacity(0.5), width: 2),
-          ),
-          child: Icon(
-            widget._getTypeIcon(),
-            color: widget.color,
-            size: 28,
-          ),
-        ),
-        // 类型名称和等级
-        Column(
-          children: [
-            Text(
-              widget.cardTypeName,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: widget.color,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+  /// 图片区 — 占卡片高度 ~38%，图片全宽填充，叠加类型/等级/稀有度/费用
+  Widget _buildImageZone() {
+    final cardH = (widget.cardHeight ?? 400).toDouble();
+    final zoneH = cardH * 0.38;
+    final hasImage = widget.imageUrl != null && widget.imageUrl!.isNotEmpty;
+
+    return SizedBox(
+      height: zoneH,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 图片或渐变占位
+          if (hasImage)
+            Image.network(
+              widget.imageUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildImagePlaceholder(zoneH),
+            )
+          else
+            _buildImagePlaceholder(zoneH),
+
+          // 顶部渐隐（保证叠加文字可读）
+          Positioned(
+            top: 0, left: 0, right: 0,
+            height: zoneH * 0.35,
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: widget.color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                widget.energyLevelName,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: widget.color,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.55),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
+          ),
+          // 底部渐隐
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            height: zoneH * 0.35,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    const Color(0xFF0A0A14).withOpacity(0.7),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // --- 叠加元素 ---
+
+          // 左上：稀有度标签
+          if (widget.rarityName != null)
+            Positioned(
+              top: 10, left: 10,
+              child: _buildRarityBadge(),
+            ),
+
+          // 右上：等级圆圈
+          Positioned(
+            top: 10, right: 10,
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [widget.color.withOpacity(0.9), widget.color.withOpacity(0.35)],
+                ),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 4),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '${widget.energyLevel}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+
+          // 左下：类型图标圆圈
+          Positioned(
+            bottom: 10, left: 10,
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.color.withOpacity(0.35),
+                border: Border.all(color: widget.color.withOpacity(0.6), width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 3),
+                ],
+              ),
+              child: Icon(widget._getTypeIcon(), color: widget.color, size: 18),
+            ),
+          ),
+
+          // 右下：费用指示器
+          if (widget.cost != null)
+            Positioned(
+              bottom: 10, right: 10,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF6B4EFF),
+                  boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 3)],
+                ),
+                child: Center(
+                  child: Text(
+                    '${widget.cost}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImagePlaceholder(double height) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            widget.color.withOpacity(0.25),
+            widget.color.withOpacity(0.05),
+            const Color(0xFF1A1A2E),
           ],
         ),
-        // 等级数字
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                widget.color.withOpacity(0.8),
-                widget.color.withOpacity(0.3),
+      ),
+    );
+  }
+
+  Widget _buildRarityBadge() {
+    final rarityColor = widget.rarity != null
+        ? Color(RARITY_COLORS[widget.rarity] ?? 0xFF888888)
+        : const Color(0xFF888888);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: rarityColor.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: rarityColor.withOpacity(0.5), width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 3)],
+      ),
+      child: Text(
+        widget.rarityName!,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+      ),
+    );
+  }
+
+  /// 信息区 — 名称/子类型/属性/标签/咒语
+  Widget _buildInfoSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 卡片名称
+          Text(
+            widget.name ?? widget.cardTypeName,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: widget.color),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+
+          // 子类型行
+          if (widget.cardTypeSubName != null) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(widget._getTypeSubIcon(), size: 13, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text(widget.cardTypeSubName!, style: const TextStyle(fontSize: 12, color: Colors.white54)),
               ],
             ),
-          ),
-          child: Center(
-            child: Text(
-              '${widget.energyLevel}',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 咒语展示区
-  Widget _buildMantraSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: widget.color.withOpacity(0.2)),
-      ),
-      child: Center(
-        child: Text(
-          widget.mantra,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.white.withOpacity(0.9),
-            fontStyle: FontStyle.italic,
-            height: 1.5,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 底部能量和操作
-  Widget _buildFooter() {
-    return Column(
-      children: [
-        // 能量条
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.bolt_rounded, color: widget.color, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              '能量: ${widget.remainingEnergy}/${widget.energyValue}',
-              style: TextStyle(
-                fontSize: 16,
-                color: widget.color,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            const SizedBox(height: 4),
           ],
-        ),
-        const SizedBox(height: 16),
-        // 操作按钮
-        if (widget.remainingEnergy > 0)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              if (widget.canCharge)
-                ElevatedButton.icon(
-                  onPressed: widget.onCharge,
-                  icon: const Icon(Icons.bolt, size: 18),
-                  label: const Text('充值'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.color,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+
+          // 属性行
+          if (widget.attack != null && widget.health != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(4),
                     ),
+                    child: Row(children: [
+                      const Icon(Icons.swipe_rounded, size: 13, color: Colors.redAccent),
+                      const SizedBox(width: 4),
+                      Text('${widget.attack}', style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ]),
                   ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.favorite_border_rounded, size: 13, color: Colors.greenAccent),
+                      const SizedBox(width: 4),
+                      Text('${widget.health}', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+
+          // 标签行
+          if (widget.tags != null && widget.tags!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: widget.tags!.take(3).map((t) => Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: widget.color.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(t, style: TextStyle(fontSize: 10, color: widget.color)),
+                )).toList(),
+              ),
+            ),
+
+          // 分隔线
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            color: widget.color.withOpacity(0.15),
+          ),
+
+          // 咒语
+          Expanded(
+            child: Center(
+              child: Text(
+                widget.mantra,
+                textAlign: TextAlign.center,
+                maxLines: 8,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.white.withOpacity(0.88),
+                  fontStyle: FontStyle.italic,
+                  height: 1.45,
                 ),
-              ElevatedButton.icon(
-                onPressed: widget.onGift,
-                icon: const Icon(Icons.card_giftcard, size: 18),
-                label: const Text('赠送'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6B4EFF),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 底部能量 + 操作按钮（始终可见）
+  Widget _buildFooter() {
+    final depleted = widget.remainingEnergy <= 0;
+    final progress = widget.energyValue > 0
+        ? widget.remainingEnergy / widget.energyValue
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 能量进度条
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 3,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                depleted ? Colors.white24 : widget.color,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bolt_rounded, color: depleted ? Colors.white30 : widget.color, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '能量: ${widget.remainingEnergy}/${widget.energyValue}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: depleted ? Colors.white38 : widget.color,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
-      ],
+          const SizedBox(height: 8),
+          if (!depleted)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                if (widget.canCharge)
+                  _actionBtn('充值', Icons.bolt, widget.color, widget.onCharge),
+                _actionBtn('赠送', Icons.card_giftcard, const Color(0xFF6B4EFF), widget.onGift),
+              ],
+            )
+          else
+            Text('能量耗尽', style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.2))),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn(String label, IconData icon, Color bgColor, VoidCallback? onPressed) {
+    return SizedBox(
+      height: 30,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 14),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bgColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+        ),
+      ),
     );
   }
 }
@@ -332,14 +582,13 @@ class OrnateBorderPainter extends CustomPainter {
 
     final cornerSize = 20.0;
 
-    // 四角装饰
     _drawCornerDecoration(canvas, size, paint, cornerSize, isTopLeft: true);
     _drawCornerDecoration(canvas, size, paint, cornerSize, isTopRight: true);
     _drawCornerDecoration(canvas, size, paint, cornerSize, isBottomLeft: true);
     _drawCornerDecoration(canvas, size, paint, cornerSize, isBottomRight: true);
 
-    // 中间分隔线
-    final midY = size.height * 0.35;
+    // 分隔线对齐图片区下沿 (~38%)
+    final midY = size.height * 0.38;
     canvas.drawLine(
       Offset(size.width * 0.1, midY),
       Offset(size.width * 0.9, midY),

@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../models/stone.dart';
 import 'stone_shop_screen.dart';
 import 'bind_stone_screen.dart';
+import 'store_screen.dart';
+import 'message_screen.dart';
 import 'onboarding_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -284,9 +286,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _goToStore() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StoreScreen(userId: widget.userId, stones: _user?.stones.map((s) => StoneDetail(
+          id: s.id, uniqueCode: s.uniqueCode, stoneType: s.stoneType,
+          stoneTypeName: s.displayName, colorCode: s.colorCode,
+          ownerId: s.ownerId, ownerNickname: _user?.nickname,
+          currentEnergy: s.currentEnergy, energyCap: 100,
+          deathCount: s.deathCount, status: s.status,
+          consecutiveDays: s.consecutiveDays, nextMultiplier: 1,
+          canTransfer: s.status == 'ALIVE',
+        )).toList() ?? []),
+      ),
+    ).then((_) {
+      _loadData();
+      if (widget.onRefresh != null) widget.onRefresh!();
+    });
+  }
+
+  void _goToMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => MessageScreen(userId: widget.userId)),
+    );
+  }
+
   Widget _buildSystemButtons() {
     return Column(
       children: [
+        _buildActionButton(
+          icon: Icons.store,
+          title: '商店',
+          subtitle: '购买水晶和能量包',
+          onTap: _goToStore,
+        ),
+        const SizedBox(height: 8),
+        _buildActionButton(
+          icon: Icons.mail_outline,
+          title: '消息',
+          subtitle: '公告和私信',
+          onTap: _goToMessages,
+        ),
+        const SizedBox(height: 8),
         _buildActionButton(
           icon: Icons.dns_outlined,
           title: '服务器配置',
@@ -379,7 +422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            '版本: v0.4.0',
+            '版本: v0.5.0',
             style: TextStyle(color: Colors.white.withOpacity(0.7)),
           ),
           const SizedBox(height: 4),

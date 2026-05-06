@@ -143,6 +143,44 @@ STONE_TYPES = {
     "FAMILY": {"name": "家庭", "color": "blue", "color_code": "#2196F3"},
 }
 
+RARITY_NAMES = {
+    "IRON": "赤铁",
+    "BRONZE": "青铜",
+    "SILVER": "白银",
+    "GOLD": "黄金",
+    "BLACK_GOLD": "黑金",
+}
+
+RARITY_COLORS = {
+    "IRON": "#B7410E",     # 铁锈红
+    "BRONZE": "#CD7F32",   # 青铜色
+    "SILVER": "#A8A9AD",   # 银灰色
+    "GOLD": "#FFD700",     # 黄金色
+    "BLACK_GOLD": "#1C1C1A", # 黑金色
+}
+
+CARD_TYPE_SUB_NAMES = {
+    "UNIT": "单位",
+    "SPELL": "法术",
+    "ITEM": "装备",
+    "RELIC": "遗物",
+}
+
+
+class CardStats(BaseModel):
+    attack: int = 0
+    health: int = 0
+
+
+class CardEffect(BaseModel):
+    type: str
+    target: str
+    value: float
+    condition: Optional[str] = None
+    subtype: Optional[str] = None
+    max: Optional[int] = None
+    risk: Optional[float] = None
+
 
 class CardResponse(BaseModel):
     id: int
@@ -157,6 +195,28 @@ class CardResponse(BaseModel):
     color_code: str
     can_charge: bool
     created_at: str
+    image_url: Optional[str] = None
+    # v0.6.0 新字段
+    card_id: Optional[str] = None
+    name: Optional[str] = None
+    faction: Optional[str] = None
+    rarity: Optional[str] = None
+    rarity_name: Optional[str] = None
+    card_type_sub: Optional[str] = None
+    card_type_sub_name: Optional[str] = None
+    cost: Optional[int] = None
+    stats: Optional[CardStats] = None
+    tags: Optional[List[str]] = None
+    effects: Optional[List[CardEffect]] = None
+    lore: Optional[str] = None
+    # v0.7.0 卡牌布局
+    card_width: Optional[int] = None
+    card_height: Optional[int] = None
+    image_fit: str = "COVER"
+    margin_top: int = 0
+    margin_left: int = 0
+    margin_bottom: int = 0
+    margin_right: int = 0
 
 
 class CardListResponse(BaseModel):
@@ -181,6 +241,9 @@ class DrawStatusResponse(BaseModel):
     free_draws_available: int
     energy_draws_used: int
     energy_draws_remaining: int
+    # v0.6.0 保底计数器
+    pity_gold: int = 0
+    pity_black_gold: int = 0
 
 
 class ChargeCardRequest(BaseModel):
@@ -234,3 +297,256 @@ class AcceptCardResponse(BaseModel):
     success: bool
     card_id: int
     message: str
+
+
+# ==================== 合成相关 Schema ====================
+
+class SynthesizeRequest(BaseModel):
+    user_id: int
+    card_ids: List[int]  # 必须是3张同类型同等级卡牌
+
+
+class SynthesizeResponse(BaseModel):
+    success: bool
+    card: Optional[CardResponse]
+    message: str
+
+
+# ==================== 收藏相关 Schema ====================
+
+class CollectionProgress(BaseModel):
+    card_type: str
+    card_type_name: str
+    collected: int  # 已收集的预设卡牌数
+    total: int  # 该类型预设卡牌总数
+
+
+class CollectionResponse(BaseModel):
+    collections: List[CollectionProgress]
+
+
+# ==================== 商店相关 Schema ====================
+
+class StoreItemResponse(BaseModel):
+    id: int
+    item_type: str
+    name: str
+    stone_type: Optional[str]
+    energy_amount: int
+    price: int
+    is_active: bool
+
+
+class StoreItemListResponse(BaseModel):
+    items: List[StoreItemResponse]
+
+
+class PurchaseRequest(BaseModel):
+    user_id: int
+    item_id: int
+
+
+class PurchaseResponse(BaseModel):
+    success: bool
+    item_name: str
+    energy_deducted: int
+    user_total_energy: int
+    message: str
+
+
+# ==================== 消息相关 Schema ====================
+
+class MessageResponse(BaseModel):
+    id: int
+    msg_type: str
+    msg_subtype: Optional[str] = None  # GIFT_CARD etc.
+    title: str
+    content: str
+    sender_id: Optional[int]
+    sender_nickname: Optional[str]
+    is_read: bool
+    created_at: str
+    card_info: Optional[PendingCardResponse] = None  # populated for GIFT_CARD messages
+
+
+class MessageListResponse(BaseModel):
+    messages: List[MessageResponse]
+    total: int
+    unread_count: int
+
+
+class SendMessageRequest(BaseModel):
+    sender_id: int
+    receiver_id: int
+    title: str
+    content: str
+
+
+# ==================== 广场相关 Schema ====================
+
+class PlazaPostResponse(BaseModel):
+    id: int
+    user_id: Optional[int]
+    user_nickname: Optional[str]
+    post_type: str
+    content: str
+    pray_count: int
+    has_prayed: bool
+    created_at: str
+
+
+class PlazaPostListResponse(BaseModel):
+    posts: List[PlazaPostResponse]
+    total: int
+
+
+class CreatePostRequest(BaseModel):
+    user_id: int
+    post_type: str  # BLESSING / WISH
+    content: str
+
+
+class CreateActivityRequest(BaseModel):
+    content: str
+
+
+class PrayResponse(BaseModel):
+    success: bool
+    pray_count: int
+    message: str
+
+
+# ==================== v0.6.0 原型管理 Schema ====================
+
+
+class ArchetypeResponse(BaseModel):
+    id: int
+    archetype_id: str
+    faction: str
+    rarity: str
+    card_type: str
+    name_templates_json: str
+    base_cost: int
+    base_stats_json: Optional[str] = None
+    base_effects_json: Optional[str] = None
+    lore_template: Optional[str] = None
+    tags_json: Optional[str] = None
+    version: int
+    is_active: bool
+
+
+class ArchetypeListResponse(BaseModel):
+    archetypes: List[ArchetypeResponse]
+    total: int
+
+
+class ArchetypeCreateRequest(BaseModel):
+    archetype_id: str
+    faction: str
+    rarity: str
+    card_type: str
+    name_templates_json: str  # JSON array string
+    base_cost: int = 1
+    base_stats_json: Optional[str] = None
+    base_effects_json: Optional[str] = None
+    lore_template: Optional[str] = None
+    tags_json: Optional[str] = None
+
+
+class ArchetypeUpdateRequest(BaseModel):
+    faction: Optional[str] = None
+    rarity: Optional[str] = None
+    card_type: Optional[str] = None
+    name_templates_json: Optional[str] = None
+    base_cost: Optional[int] = None
+    base_stats_json: Optional[str] = None
+    base_effects_json: Optional[str] = None
+    lore_template: Optional[str] = None
+    tags_json: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ==================== 管理后台 Schema ====================
+
+class AdminLoginRequest(BaseModel):
+    admin_token: str
+
+
+class AdminLoginResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class PresetCardManageResponse(BaseModel):
+    id: int
+    card_type: str
+    mantra: str
+    energy_level: int
+    image_url: Optional[str] = None
+    # v0.6.0 fields
+    card_id: Optional[str] = None
+    name: Optional[str] = None
+    faction: Optional[str] = None
+    rarity: Optional[str] = None
+    card_type_sub: Optional[str] = None
+    cost: Optional[int] = None
+    tags_json: Optional[str] = None
+    # v0.7.0 layout + status
+    status: str = "PENDING"
+    card_width: Optional[int] = None
+    card_height: Optional[int] = None
+    image_fit: str = "COVER"
+    margin_top: int = 0
+    margin_left: int = 0
+    margin_bottom: int = 0
+    margin_right: int = 0
+
+
+class PresetCardManageListResponse(BaseModel):
+    cards: List[PresetCardManageResponse]
+    total: int
+
+
+class PresetCardCreateRequest(BaseModel):
+    card_type: str  # HEALTH/LOVE/WEALTH/CAREER/FAMILY
+    mantra: str
+    energy_level: int  # 1-5
+    image_url: Optional[str] = None
+    # v0.7.0
+    status: str = "PENDING"
+    card_width: Optional[int] = None
+    card_height: Optional[int] = None
+    image_fit: str = "COVER"
+    margin_top: int = 0
+    margin_left: int = 0
+    margin_bottom: int = 0
+    margin_right: int = 0
+
+
+class PresetCardUpdateRequest(BaseModel):
+    card_type: Optional[str] = None
+    mantra: Optional[str] = None
+    energy_level: Optional[int] = None
+    image_url: Optional[str] = None
+    # v0.7.0
+    status: Optional[str] = None
+    card_width: Optional[int] = None
+    card_height: Optional[int] = None
+    image_fit: Optional[str] = None
+    margin_top: Optional[int] = None
+    margin_left: Optional[int] = None
+    margin_bottom: Optional[int] = None
+    margin_right: Optional[int] = None
+
+
+class StoreItemCreateRequest(BaseModel):
+    item_type: str
+    name: str
+    stone_type: Optional[str] = None
+    energy_amount: int = 0
+    price: int
+
+
+class AnnouncementRequest(BaseModel):
+    title: str
+    content: str

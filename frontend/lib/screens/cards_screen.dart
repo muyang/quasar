@@ -25,12 +25,14 @@ class _CardsScreenState extends State<CardsScreen> {
   final PageController _pageController = PageController();
 
   List<Card> _cards = [];
-  List<PendingCard> _pendingCards = [];
+  List<CollectionProgress> _collections = [];
   DrawStatus? _drawStatus;
   int _currentPage = 0;
   bool _isLoading = true;
   bool _isCardView = true;
-  bool _showPendingPanel = false;
+  bool _synthesisMode = false;
+  bool _showCollection = false;
+  final Set<int> _selectedForSynthesis = {};
 
   @override
   void initState() {
@@ -42,20 +44,18 @@ class _CardsScreenState extends State<CardsScreen> {
     try {
       final cards = await _apiService.getUserCards(widget.userId);
       final status = await _apiService.getDrawStatus(widget.userId);
-      final pending = await _apiService.getPendingCards(widget.userId);
+      final collections = await _apiService.getCollection(widget.userId);
       setState(() {
         _cards = cards;
         _drawStatus = status;
-        _pendingCards = pending;
+        _collections = collections;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('加载失败: $e'), backgroundColor: Colors.red),
-      );
+      print('[Cards] 加载失败: $e');
     }
   }
 
@@ -209,78 +209,53 @@ class _CardsScreenState extends State<CardsScreen> {
     });
   }
 
-  void _showPendingCardsPanel() {
-    setState(() {
-      _showPendingPanel = true;
-    });
-  }
-
-  void _closePendingPanel() {
-    setState(() {
-      _showPendingPanel = false;
-    });
-  }
-
-  Future<void> _acceptPendingCard(PendingCard card) async {
-    try {
-      await _apiService.acceptCard(card.id, widget.userId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已接收【${card.cardTypeName}】${card.energyLevelName}级卡牌'),
-          backgroundColor: const Color(0xFF6B4EFF),
-        ),
-      );
-      _loadData();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('接收失败: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的卡牌'),
+        title: Text(_synthesisMode ? '选择3张同类型同等级卡牌' : (_showCollection ? '收藏进度' : '我的卡牌')),
         backgroundColor: const Color(0xFF1A1A2E),
         foregroundColor: Colors.white,
+        leading: _synthesisMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() { _synthesisMode = false; _selectedForSynthesis.clear(); }),
+              )
+            : null,
         actions: [
-          // 待接收消息按钮（有红点）
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications),
-                onPressed: _showPendingCardsPanel,
-              ),
-              if (_pendingCards.isNotEmpty)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          // 视图切换按钮
-          IconButton(
-            icon: Icon(_isCardView ? Icons.list : Icons.view_carousel),
-            onPressed: () {
-              setState(() {
-                _isCardView = !_isCardView;
-              });
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
+          if (_synthesisMode)
+            TextButton(
+              onPressed: _selectedForSynthesis.length == 3 ? _executeSynthesis : null,
+              child: Text('合成(${_selectedForSynthesis.length}/3)',
+                  style: TextStyle(color: _selectedForSynthesis.length == 3 ? const Color(0xFFB794FF) : Colors.white38)),
+            )
+          else ...[
+            // 收藏进度按钮
+            IconButton(
+              icon: Icon(_showCollection ? Icons.style : Icons.collections_bookmark, color: _showCollection ? const Color(0xFFB794FF) : Colors.white),
+              onPressed: () => setState(() => _showCollection = !_showCollection),
+              tooltip: '收藏进度',
+            ),
+            // 合成按钮
+            IconButton(
+              icon: const Icon(Icons.merge, color: Colors.white),
+              onPressed: () => setState(() { _synthesisMode = !_synthesisMode; _selectedForSynthesis.clear(); }),
+              tooltip: '合成',
+            ),
+            // 视图切换按钮
+            IconButton(
+              icon: Icon(_isCardView ? Icons.list : Icons.view_carousel),
+              onPressed: () {
+                setState(() {
+                  _isCardView = !_isCardView;
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadData,
+            ),
+          ],
         ],
       ),
       body: Container(
@@ -293,14 +268,14 @@ class _CardsScreenState extends State<CardsScreen> {
         ),
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF6B4EFF)))
-            : Stack(
-                children: [
-                  Column(
+            : _showCollection
+                ? _buildCollectionView()
+                : Column(
                     children: [
-                      // 抽卡状态和按钮
-                      _buildDrawSection(),
-                      const SizedBox(height: 16),
-                      // 卡牌列表
+                      if (!_synthesisMode) ...[
+                        _buildDrawSection(),
+                        const SizedBox(height: 16),
+                      ],
                       Expanded(
                         child: _cards.isEmpty
                             ? _buildEmptyState()
@@ -310,13 +285,109 @@ class _CardsScreenState extends State<CardsScreen> {
                       ),
                     ],
                   ),
-                  // 待接收卡牌面板
-                  if (_showPendingPanel)
-                    _buildPendingPanel(),
-                ],
-              ),
       ),
     );
+  }
+
+  void _toggleCardSelection(Card card) {
+    if (!_synthesisMode) return;
+    setState(() {
+      if (_selectedForSynthesis.contains(card.id)) {
+        _selectedForSynthesis.remove(card.id);
+      } else {
+        if (_selectedForSynthesis.isEmpty) {
+          _selectedForSynthesis.add(card.id);
+        } else {
+          // Check same type and level
+          final first = _cards.firstWhere((c) => c.id == _selectedForSynthesis.first);
+          if (card.cardType == first.cardType && card.energyLevel == first.energyLevel) {
+            if (_selectedForSynthesis.length < 3) {
+              _selectedForSynthesis.add(card.id);
+            }
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('合成需要相同类型和等级的卡牌'), backgroundColor: Colors.orange),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _executeSynthesis() async {
+    if (_selectedForSynthesis.length != 3) return;
+    try {
+      final result = await _apiService.synthesizeCards(widget.userId, _selectedForSynthesis.toList());
+      if (result.success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.message), backgroundColor: const Color(0xFF6B4EFF)),
+        );
+        setState(() {
+          _synthesisMode = false;
+          _selectedForSynthesis.clear();
+        });
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('合成失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Widget _buildCollectionView() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text('卡牌收藏进度', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+        const SizedBox(height: 16),
+        ..._collections.map((c) => _buildCollectionBar(c)),
+      ],
+    );
+  }
+
+  Widget _buildCollectionBar(CollectionProgress col) {
+    final progress = col.total > 0 ? col.collected / col.total : 0.0;
+    final color = _cardTypeColor(col.cardType);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('${col.cardTypeName}', style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+              ),
+              Text('${col.collected}/${col.total}', style: const TextStyle(color: Colors.white54)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: color.withOpacity(0.2),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+              minHeight: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _cardTypeColor(String type) {
+    switch (type) {
+      case 'HEALTH': return const Color(0xFF4CAF50);
+      case 'LOVE': return const Color(0xFFE91E63);
+      case 'WEALTH': return const Color(0xFFFFD700);
+      case 'CAREER': return const Color(0xFFF44336);
+      case 'FAMILY': return const Color(0xFF2196F3);
+      default: return Colors.grey;
+    }
   }
 
   Widget _buildDrawSection() {
@@ -428,29 +499,64 @@ class _CardsScreenState extends State<CardsScreen> {
 
   Widget _buildCardItem(Card card) {
     final color = _parseColor(card.colorCode);
-    return Center(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CardWidget(
-              cardType: card.cardType,
-              cardTypeName: card.cardTypeName,
-              mantra: card.mantra,
-              energyLevel: card.energyLevel,
-              energyLevelName: card.energyLevelName,
-              energyValue: card.energyValue,
-              remainingEnergy: card.remainingEnergy,
-              color: color,
-              canCharge: card.canCharge,
-              onCharge: card.canCharge && card.remainingEnergy > 0
-                  ? () => _chargeCard(card)
-                  : null,
-              onGift: card.remainingEnergy > 0
-                  ? () => _showGiftDialog(card)
-                  : null,
-            ),
-          ],
+    final isSelected = _selectedForSynthesis.contains(card.id);
+
+    return GestureDetector(
+      onTap: _synthesisMode ? () => _toggleCardSelection(card) : null,
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_synthesisMode)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFF6B4EFF).withOpacity(0.3) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: isSelected ? const Color(0xFF6B4EFF) : Colors.white24),
+                  ),
+                  child: Text(
+                    isSelected ? '已选择' : '点击选择',
+                    style: TextStyle(color: isSelected ? const Color(0xFFB794FF) : Colors.white38, fontSize: 12),
+                  ),
+                ),
+              CardWidget(
+                cardType: card.cardType,
+                cardTypeName: card.cardTypeName,
+                mantra: card.mantra,
+                energyLevel: card.energyLevel,
+                energyLevelName: card.energyLevelName,
+                energyValue: card.energyValue,
+                remainingEnergy: card.remainingEnergy,
+                color: color,
+                canCharge: !_synthesisMode && card.canCharge,
+                imageUrl: card.imageUrl,
+                rarity: card.rarity,
+                rarityName: card.rarityName,
+                cardTypeSubName: card.cardTypeSubName,
+                cost: card.cost,
+                attack: card.stats?.attack,
+                health: card.stats?.health,
+                tags: card.tags,
+                name: card.name,
+                cardWidth: card.cardWidth,
+                cardHeight: card.cardHeight,
+                imageFit: card.imageFit,
+                marginTop: card.marginTop,
+                marginLeft: card.marginLeft,
+                marginBottom: card.marginBottom,
+                marginRight: card.marginRight,
+                onCharge: _synthesisMode || !card.canCharge || card.remainingEnergy <= 0
+                    ? null
+                    : () => _chargeCard(card),
+                onGift: _synthesisMode || card.remainingEnergy <= 0
+                    ? null
+                    : () => _showGiftDialog(card),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -467,203 +573,102 @@ class _CardsScreenState extends State<CardsScreen> {
 
   Widget _buildListCardItem(Card card) {
     final color = _parseColor(card.colorCode);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withOpacity(0.3), const Color(0xFF2A2A4A)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: color.withOpacity(0.6),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${card.energyLevel}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${card.cardTypeName} · ${card.energyLevelName}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
-                      ),
-                      Text(
-                        '能量: ${card.remainingEnergy}/${card.energyValue}',
-                        style: TextStyle(color: color.withOpacity(0.8), fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  if (card.canCharge && card.remainingEnergy > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ElevatedButton(
-                        onPressed: () => _chargeCard(card),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: color,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text('充值', style: TextStyle(fontSize: 12)),
-                      ),
-                    ),
-                  if (card.remainingEnergy > 0)
-                    ElevatedButton(
-                      onPressed: () => _showGiftDialog(card),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6B4EFF),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text('赠送', style: TextStyle(fontSize: 12)),
-                    ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              card.mantra,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 14,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 待接收卡牌面板
-  Widget _buildPendingPanel() {
-    return Positioned.fill(
+    final isSelected = _selectedForSynthesis.contains(card.id);
+    return GestureDetector(
+      onTap: _synthesisMode ? () => _toggleCardSelection(card) : null,
       child: Container(
-        color: Colors.black.withOpacity(0.7),
-        child: Center(
-          child: Container(
-        width: 320,
-        constraints: const BoxConstraints(maxHeight: 400),
-        padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2A4A),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withOpacity(isSelected ? 0.6 : 0.3), const Color(0xFF2A2A4A)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: isSelected ? const Color(0xFF6B4EFF) : color.withOpacity(0.5), width: isSelected ? 2 : 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('待接收卡牌', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white54),
-                      onPressed: _closePendingPanel,
+                    if (_synthesisMode) ...[
+                      Container(
+                        width: 24, height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected ? const Color(0xFF6B4EFF) : Colors.transparent,
+                          border: Border.all(color: isSelected ? const Color(0xFF6B4EFF) : Colors.white24),
+                        ),
+                        child: isSelected ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color.withOpacity(0.6),
+                      ),
+                      child: Center(
+                        child: Text('${card.energyLevel}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${card.cardTypeName} · ${card.energyLevelName}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
+                        Text('能量: ${card.remainingEnergy}/${card.energyValue}',
+                            style: TextStyle(color: color.withOpacity(0.8), fontSize: 14)),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                if (_pendingCards.isEmpty)
-                  const Text('暂无待接收卡牌', style: TextStyle(color: Colors.white54))
-                else
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _pendingCards.length,
-                      itemBuilder: (context, index) => _buildPendingCardItem(_pendingCards[index]),
-                    ),
+                if (!_synthesisMode)
+                  Row(
+                    children: [
+                      if (card.canCharge && card.remainingEnergy > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ElevatedButton(
+                            onPressed: () => _chargeCard(card),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: color, foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            child: const Text('充值', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                      if (card.remainingEnergy > 0)
+                        ElevatedButton(
+                          onPressed: () => _showGiftDialog(card),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6B4EFF), foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: const Text('赠送', style: TextStyle(fontSize: 12)),
+                        ),
+                    ],
                   ),
               ],
             ),
-          ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.black.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+              child: Text(card.mantra, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14, fontStyle: FontStyle.italic)),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPendingCardItem(PendingCard card) {
-    final color = _parseColor(card.colorCode);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [color.withOpacity(0.3), const Color(0xFF2A2A4A)]),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withOpacity(0.6),
-            ),
-            child: Center(
-              child: Text('${card.energyLevel}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '收到一张【${card.cardTypeName}】${card.energyLevelName}级卡牌',
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                ),
-                if (card.fromUserNickname != null)
-                  Text(
-                    '来自: ${card.fromUserNickname}',
-                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
-                  ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => _acceptPendingCard(card),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('接收'),
-          ),
-        ],
-      ),
-    );
-  }
 }

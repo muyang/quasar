@@ -169,6 +169,14 @@ class _DrawCardScreenState extends State<DrawCardScreen> {
                           '能量抽卡: ${_drawStatus?.energyDrawsRemaining ?? 3}次剩余 (每次消耗3点能量)',
                           style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
                         ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildPityIndicator('黄金保底', _drawStatus?.pityGold ?? 0, 30, const Color(0xFFFFD700)),
+                            _buildPityIndicator('黑金保底', _drawStatus?.pityBlackGold ?? 0, 100, const Color(0xFF1A1A1A)),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -286,6 +294,32 @@ class _DrawCardScreenState extends State<DrawCardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPityIndicator(String label, int current, int max, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        const SizedBox(height: 4),
+        Container(
+          width: 80,
+          height: 4,
+          decoration: BoxDecoration(
+            color: Colors.white12,
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: (current / max).clamp(0.0, 1.0),
+            child: Container(
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text('$current/$max', style: TextStyle(color: color.withOpacity(0.8), fontSize: 11)),
+      ],
     );
   }
 
